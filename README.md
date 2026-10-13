@@ -16,7 +16,7 @@ Both are written to the current directory.
 ## How it works
 
 1. **Learn your face.** Every photo in the reference folder must contain exactly one face (others are skipped with a message). Their face embeddings are averaged into one.
-2. **List the albums.** [gallery-dl](https://github.com/mikf/gallery-dl) runs inside the JVM on [GraalPy](https://www.graalvm.org/python/) and lists every photo with its 1024 px image URL; all albums are listed in parallel.
+2. **List the albums.** [gallery-dl](https://github.com/mikf/gallery-dl) runs inside the JVM on [GraalPy](https://www.graalvm.org/python/) and lists every photo with its 1024 px image URL, one album after another (GraalPy allows native modules in only one context per process, and gallery-dl isn't thread-safe within one interpreter).
 3. **Scan.** Photos are downloaded (up to 64 in flight, retries with backoff on network errors, 429 and 5xx), every face in each photo is embedded, and a photo matches when any face has cosine similarity ≥ 0.40 to yours. Raise `THRESHOLD` in `FindMe.java` if you get false matches, lower it if it misses you.
 
 Under the hood:

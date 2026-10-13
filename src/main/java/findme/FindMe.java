@@ -26,7 +26,6 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.bytedeco.javacpp.PointerScope;
 import org.graalvm.polyglot.Context;
-import org.graalvm.polyglot.Engine;
 import org.graalvm.polyglot.Value;
 import org.graalvm.python.embedding.GraalPyResources;
 
@@ -155,47 +154,34 @@ public final class FindMe {
         return sum;
     }
 
-    /** Lists all albums in parallel; photos already in seen.txt or repeated across albums are dropped. */
+    /**
+     * Lists the albums one after another in a single Python context; photos already in seen.txt or repeated across
+     * albums are dropped. Not parallel: only one GraalPy context per process may load native modules (gallery-dl needs
+     * termios), and gallery-dl isn't thread-safe within one interpreter (shared extractor generator and SQLite cache).
+     */
     private static List<Photo> listAlbums(List<String> albums, Set<String> seen) throws Exception {
-        List<List<Photo>> listed = new ArrayList<>();
-        AtomicInteger done = new AtomicInteger();
-        // platform threads: each album gets its own Python context, and contexts aren't meant to hop carrier threads
-        try (Engine engine = Engine.newBuilder().option("engine.WarnInterpreterOnly", "false").build();
-                var pool = Executors.newThreadPerTaskExecutor(Thread.ofPlatform().factory())) {
-            var futures = albums.stream().map(a -> pool.submit(() -> {
-                List<Photo> photos = albumPhotos(engine, a);
-                System.err.println("listed album " + done.incrementAndGet() + "/" + albums.size() + ": " + a
-                        + " (" + photos.size() + " photos)");
-                return photos;
-            })).toList();
-            for (var f : futures) {
-                listed.add(f.get());
-            }
-        }
         Map<String, Photo> todo = new LinkedHashMap<>();
-        listed.forEach(l -> l.forEach(p -> {
-            if (!seen.contains(p.id())) {
-                todo.putIfAbsent(p.id(), p);
+        try (Context py = GraalPyResources.contextBuilder().option("engine.WarnInterpreterOnly", "false").build()) {
+            Value list = py.eval("python", LIST_ALBUM);
+            for (int n = 0; n < albums.size(); n++) {
+                String url = albums.get(n);
+                // gallery-dl doesn't support flic.kr short links; use where they redirect
+                String resolved = HTTP.send(HttpRequest.newBuilder(URI.create(url)).build(),
+                        HttpResponse.BodyHandlers.discarding()).uri().toString();
+                Value found = list.execute(resolved);
+                System.err.println("listed album " + (n + 1) + "/" + albums.size() + ": " + url
+                        + " (" + found.getArraySize() + " photos)");
+                for (long i = 0; i < found.getArraySize(); i++) {
+                    Value t = found.getArrayElement(i);
+                    String id = t.getArrayElement(1).asString();
+                    if (!seen.contains(id)) {
+                        todo.putIfAbsent(id, new Photo(id, t.getArrayElement(0).asString(),
+                                "https://www.flickr.com/photos/" + t.getArrayElement(2).asString() + "/" + id));
+                    }
+                }
             }
-        }));
-        return new ArrayList<>(todo.values());
-    }
-
-    private static List<Photo> albumPhotos(Engine engine, String url) throws Exception {
-        // gallery-dl doesn't support flic.kr short links; use where they redirect
-        String resolved = HTTP.send(HttpRequest.newBuilder(URI.create(url)).build(), HttpResponse.BodyHandlers.discarding())
-                .uri().toString();
-        try (Context py = GraalPyResources.contextBuilder().engine(engine).build()) {
-            Value found = py.eval("python", LIST_ALBUM).execute(resolved);
-            List<Photo> photos = new ArrayList<>();
-            for (long i = 0; i < found.getArraySize(); i++) {
-                Value t = found.getArrayElement(i);
-                String id = t.getArrayElement(1).asString();
-                photos.add(new Photo(id, t.getArrayElement(0).asString(),
-                        "https://www.flickr.com/photos/" + t.getArrayElement(2).asString() + "/" + id));
-            }
-            return photos;
         }
+        return new ArrayList<>(todo.values());
     }
 
     private static void scan(Faces faces, float[] me, List<Photo> todo) throws Exception {
