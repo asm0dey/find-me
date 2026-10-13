@@ -21,7 +21,7 @@ Both are written to the current directory.
 
 Under the hood:
 
-- **Face models:** insightface `buffalo_l`: SCRFD detector (`det_10g.onnx`) and ArcFace recognizer (`w600k_r50.onnx`). Detection decoding, NMS and face alignment follow insightface's reference code; on 89 test photos the embeddings match insightface's own to cosine similarity ≥ 0.9999.
+- **Face models:** insightface `buffalo_l`: SCRFD detector (`det_10g.onnx`) and ArcFace recognizer (`w600k_r50.onnx`). Detection decoding, NMS and face alignment follow insightface's reference code; on 89 single-face and 13 group/stage photos (20 faces) the embeddings match insightface's own to cosine similarity ≥ 0.9998. Faces are embedded one per run: `w600k_r50` gives wrong embeddings when batched.
 - **Inference:** ONNX Runtime via [onnxruntime-java](https://github.com/yuzawa-san/onnxruntime-java) (FFM/Panama). CUDA on Linux, CoreML on macOS, CPU fallback with a warning. GPU runs are serialized: concurrent CUDA runs exhausted a 6 GB GPU.
 - **Image ops:** OpenCV 4.13 via [bytedeco/JavaCPP](https://github.com/bytedeco/javacpp-presets/tree/master/opencv): decoding, resize, warpAffine, blobFromImage.
 

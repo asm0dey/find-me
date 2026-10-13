@@ -13,7 +13,6 @@ import static org.bytedeco.opencv.global.opencv_core.CV_64F;
 import static org.bytedeco.opencv.global.opencv_core.CV_8UC1;
 import static org.bytedeco.opencv.global.opencv_core.CV_8UC3;
 import static org.bytedeco.opencv.global.opencv_dnn.blobFromImage;
-import static org.bytedeco.opencv.global.opencv_dnn.blobFromImages;
 import static org.bytedeco.opencv.global.opencv_imgcodecs.IMREAD_COLOR;
 import static org.bytedeco.opencv.global.opencv_imgcodecs.imdecode;
 import static org.bytedeco.opencv.global.opencv_imgproc.resize;
@@ -29,7 +28,6 @@ import org.bytedeco.javacpp.BytePointer;
 import org.bytedeco.javacpp.DoublePointer;
 import org.bytedeco.javacpp.PointerScope;
 import org.bytedeco.opencv.opencv_core.Mat;
-import org.bytedeco.opencv.opencv_core.MatVector;
 import org.bytedeco.opencv.opencv_core.Rect;
 import org.bytedeco.opencv.opencv_core.Scalar;
 import org.bytedeco.opencv.opencv_core.Size;
@@ -190,33 +188,30 @@ final class Faces implements AutoCloseable {
         return keep;
     }
 
-    /** insightface norm_crop for every face, then ArcFace on all of them in one batch. */
+    /**
+     * insightface norm_crop + ArcFace, one face per run like insightface: w600k_r50 only works with batch size 1
+     * (batched runs return wrong embeddings for every face, with an ONNX Runtime "Expected shape {1,512}" warning).
+     */
     private List<float[]> embed(Mat img, List<Detection> faces) {
-        int n = faces.size();
-        MatVector crops = new MatVector(n);
-        for (int i = 0; i < n; i++) {
+        List<float[]> result = new ArrayList<>(faces.size());
+        for (Detection face : faces) {
             Mat crop = new Mat();
-            warpAffine(img, crop, align(faces.get(i).kps), new Size(REC_SIZE, REC_SIZE)); // bilinear, black border
-            crops.put(i, crop);
-        }
-        Mat blob = blobFromImages(crops, 1 / 127.5, new Size(REC_SIZE, REC_SIZE), Scalar.all(127.5), true, false, CV_32F);
-        List<float[]> result = new ArrayList<>(n);
-        try (Transaction txn = rec.newTransaction().build()) {
-            txn.addInput(0).asTensor(List.of((long) n, 3L, (long) REC_SIZE, (long) REC_SIZE)).getFloatBuffer()
-                    .put(blob.<FloatBuffer>createBuffer());
-            txn.addOutput(0);
-            FloatBuffer out = run(txn).get(0).asTensor().getFloatBuffer();
-            int dim = out.capacity() / n;
-            for (int i = 0; i < n; i++) {
-                float[] e = new float[dim];
-                out.get(i * dim, e);
+            warpAffine(img, crop, align(face.kps), new Size(REC_SIZE, REC_SIZE)); // bilinear, black border
+            Mat blob = blobFromImage(crop, 1 / 127.5, new Size(REC_SIZE, REC_SIZE), Scalar.all(127.5), true, false, CV_32F);
+            try (Transaction txn = rec.newTransaction().build()) {
+                txn.addInput(0).asTensor(List.of(1L, 3L, (long) REC_SIZE, (long) REC_SIZE)).getFloatBuffer()
+                        .put(blob.<FloatBuffer>createBuffer());
+                txn.addOutput(0);
+                FloatBuffer out = run(txn).get(0).asTensor().getFloatBuffer();
+                float[] e = new float[out.capacity()];
+                out.get(0, e);
                 double norm = 0;
                 for (float v : e) {
                     norm += v * v;
                 }
                 float inv = (float) (1 / Math.sqrt(norm));
-                for (int j = 0; j < dim; j++) {
-                    e[j] *= inv;
+                for (int k = 0; k < e.length; k++) {
+                    e[k] *= inv;
                 }
                 result.add(e);
             }
