@@ -1,0 +1,302 @@
+package findme;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.io.Writer;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.bytedeco.javacpp.PointerScope;
+import org.graalvm.polyglot.Context;
+import org.graalvm.polyglot.Engine;
+import org.graalvm.polyglot.Value;
+import org.graalvm.python.embedding.GraalPyResources;
+
+/**
+ * Find your face in public Flickr albums. Everything but the downloads runs locally, on the GPU when CUDA is available.
+ *
+ * <p>usage: java -jar target/find-me.jar &lt;reference-photos-dir&gt; &lt;album-url&gt; [&lt;album-url&gt; ...]
+ */
+public final class FindMe {
+
+    private static final float THRESHOLD = 0.40f; // cosine similarity; raise if too many false matches, lower if it misses you
+    private static final Path MODELS = Path.of(System.getenv().getOrDefault("FIND_ME_MODELS",
+            System.getProperty("user.home") + "/.insightface/models/buffalo_l"));
+    private static final String MODELS_URL =
+            "https://github.com/deepinsight/insightface/releases/download/model-zoo/buffalo_l.zip"; // where insightface gets it
+    private static final List<String> MODEL_FILES = List.of("det_10g.onnx", "w600k_r50.onnx");
+    private static final Path SEEN = Path.of("seen.txt"), MATCHES = Path.of("matches.txt");
+    private static final int CPUS = Runtime.getRuntime().availableProcessors();
+    private static final int IN_FLIGHT = 64; // photos downloaded but not yet scanned: bounds memory when downloads outrun the GPU
+    private static final int ATTEMPTS = 4;
+
+    private static final HttpClient HTTP = HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .connectTimeout(Duration.ofSeconds(30))
+            .build();
+
+    private record Photo(String id, String imageUrl, String page) {}
+
+    // gallery-dl's DataJob is what `gallery-dl -j` runs; type 3 entries are files: [3, image_url, metadata]
+    private static final String LIST_ALBUM = """
+            from gallery_dl import config, job
+            config.set((), "size-max", 1024)
+            def photos(url):
+                j = job.DataJob(url, file=None)
+                j.run()
+                if j.exception:
+                    raise j.exception
+                return [(e[1], str(e[2]["id"]), e[2]["owner"]["nsid"]) for e in j.data if e[0] == 3]
+            photos
+            """;
+
+    public static void main(String[] args) throws Exception {
+        // Python JIT off: album listing is a short network-bound burst, where compiling costs more than it saves
+        // (27 s with the JIT vs 21 s without on a 215-photo album). Must be set before Truffle loads.
+        System.setProperty("truffle.TruffleRuntime", "com.oracle.truffle.api.impl.DefaultTruffleRuntime");
+        if (args.length < 2) {
+            System.err.println("usage: java -jar find-me.jar <reference-photos-dir> <album-url> [<album-url> ...]");
+            System.exit(1);
+        }
+        ensureModels();
+        try (Faces faces = new Faces(MODELS)) {
+            float[] me = reference(faces, Path.of(args[0]));
+            Set<String> seen = Files.exists(SEEN) ? new HashSet<>(Files.readAllLines(SEEN)) : new HashSet<>();
+            List<Photo> todo = listAlbums(List.of(args).subList(1, args.length), seen);
+            System.err.println(todo.size() + " photos to check");
+            scan(faces, me, todo);
+        }
+    }
+
+    /** Fetches insightface's buffalo_l on first use, as insightface does, keeping only the two models this app runs. */
+    private static void ensureModels() throws Exception {
+        if (MODEL_FILES.stream().allMatch(f -> Files.exists(MODELS.resolve(f)))) {
+            return;
+        }
+        Files.createDirectories(MODELS);
+        Path zip = Files.createTempFile(MODELS, "buffalo_l", ".zip");
+        try {
+            System.err.println("downloading face models (~290 MB) to " + MODELS);
+            HttpResponse<Path> r = HTTP.send(HttpRequest.newBuilder(URI.create(MODELS_URL)).build(),
+                    HttpResponse.BodyHandlers.ofFile(zip));
+            if (r.statusCode() != 200) {
+                throw new IOException("model download failed: HTTP " + r.statusCode() + " from " + MODELS_URL);
+            }
+            try (FileSystem fs = FileSystems.newFileSystem(zip)) {
+                for (String f : MODEL_FILES) { // via .part so an interrupted run never leaves a truncated model behind
+                    Path part = MODELS.resolve(f + ".part");
+                    Files.copy(fs.getPath(f), part, StandardCopyOption.REPLACE_EXISTING);
+                    Files.move(part, MODELS.resolve(f), StandardCopyOption.ATOMIC_MOVE);
+                }
+            }
+        } finally {
+            Files.deleteIfExists(zip);
+        }
+    }
+
+    private static float[] reference(Faces faces, Path dir) throws Exception {
+        List<Path> files;
+        try (var s = Files.list(dir)) {
+            files = s.filter(Files::isRegularFile).sorted().toList();
+        }
+        float[] sum = null;
+        int used = 0;
+        for (Path p : files) {
+            List<float[]> found;
+            try (PointerScope scope = new PointerScope()) {
+                found = faces.embeddings(Faces.decode(Files.readAllBytes(p)));
+            } catch (IOException e) {
+                System.err.println("skip " + p.getFileName() + ": " + e.getMessage());
+                continue;
+            }
+            if (found.size() != 1) {
+                System.err.println("skip " + p.getFileName() + ": " + found.size() + " faces");
+                continue;
+            }
+            float[] e = found.getFirst();
+            if (sum == null) {
+                sum = new float[e.length];
+            }
+            for (int i = 0; i < e.length; i++) {
+                sum[i] += e[i];
+            }
+            used++;
+        }
+        if (used == 0) {
+            System.err.println("no usable reference photos");
+            System.exit(1);
+        }
+        System.err.println("learned face from " + used + " photos");
+        double norm = 0;
+        for (float v : sum) {
+            norm += v * v;
+        }
+        for (int i = 0; i < sum.length; i++) {
+            sum[i] /= (float) Math.sqrt(norm);
+        }
+        return sum;
+    }
+
+    /** Lists all albums in parallel; photos already in seen.txt or repeated across albums are dropped. */
+    private static List<Photo> listAlbums(List<String> albums, Set<String> seen) throws Exception {
+        List<List<Photo>> listed = new ArrayList<>();
+        AtomicInteger done = new AtomicInteger();
+        // platform threads: each album gets its own Python context, and contexts aren't meant to hop carrier threads
+        try (Engine engine = Engine.newBuilder().option("engine.WarnInterpreterOnly", "false").build();
+                var pool = Executors.newThreadPerTaskExecutor(Thread.ofPlatform().factory())) {
+            var futures = albums.stream().map(a -> pool.submit(() -> {
+                List<Photo> photos = albumPhotos(engine, a);
+                System.err.println("listed album " + done.incrementAndGet() + "/" + albums.size() + ": " + a
+                        + " (" + photos.size() + " photos)");
+                return photos;
+            })).toList();
+            for (var f : futures) {
+                listed.add(f.get());
+            }
+        }
+        Map<String, Photo> todo = new LinkedHashMap<>();
+        listed.forEach(l -> l.forEach(p -> {
+            if (!seen.contains(p.id())) {
+                todo.putIfAbsent(p.id(), p);
+            }
+        }));
+        return new ArrayList<>(todo.values());
+    }
+
+    private static List<Photo> albumPhotos(Engine engine, String url) throws Exception {
+        // gallery-dl doesn't support flic.kr short links; use where they redirect
+        String resolved = HTTP.send(HttpRequest.newBuilder(URI.create(url)).build(), HttpResponse.BodyHandlers.discarding())
+                .uri().toString();
+        try (Context py = GraalPyResources.contextBuilder().engine(engine).build()) {
+            Value found = py.eval("python", LIST_ALBUM).execute(resolved);
+            List<Photo> photos = new ArrayList<>();
+            for (long i = 0; i < found.getArraySize(); i++) {
+                Value t = found.getArrayElement(i);
+                String id = t.getArrayElement(1).asString();
+                photos.add(new Photo(id, t.getArrayElement(0).asString(),
+                        "https://www.flickr.com/photos/" + t.getArrayElement(2).asString() + "/" + id));
+            }
+            return photos;
+        }
+    }
+
+    private static void scan(Faces faces, float[] me, List<Photo> todo) throws Exception {
+        Semaphore inFlight = new Semaphore(IN_FLIGHT);
+        Semaphore cpus = new Semaphore(CPUS); // caps concurrent decode+inference at the CPU count
+        AtomicInteger checked = new AtomicInteger();
+        try (Writer seenOut = Files.newBufferedWriter(SEEN, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+                Writer matchOut = Files.newBufferedWriter(MATCHES, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+                var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (Photo p : todo) {
+                inFlight.acquire();
+                pool.execute(() -> { // execute, not submit: a failure prints instead of vanishing into an unread Future
+                    try {
+                        byte[] bytes = download(p.imageUrl());
+                        if (bytes == null) {
+                            return; // not marked seen, so a re-run retries it
+                        }
+                        float score = score(faces, cpus, bytes, me);
+                        if (Float.isNaN(score)) {
+                            return;
+                        }
+                        synchronized (FindMe.class) {
+                            if (score >= THRESHOLD) {
+                                String line = String.format(Locale.ROOT, "MATCH %.2f %s", score, p.page());
+                                System.out.println(line);
+                                matchOut.write(line + "\n");
+                                matchOut.flush();
+                            }
+                            seenOut.write(p.id() + "\n");
+                            seenOut.flush();
+                        }
+                        int n = checked.incrementAndGet();
+                        if (n % 10 == 0) {
+                            System.err.println(n + "/" + todo.size());
+                        }
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    } finally {
+                        inFlight.release();
+                    }
+                });
+            }
+        }
+    }
+
+    /** Best cosine similarity of any face in the photo, 0 if none, NaN if it can't be decoded. */
+    private static float score(Faces faces, Semaphore cpus, byte[] bytes, float[] me) {
+        try {
+            cpus.acquire();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Float.NaN;
+        }
+        try (PointerScope scope = new PointerScope()) {
+            float best = 0;
+            for (float[] e : faces.embeddings(Faces.decode(bytes))) {
+                float dot = 0;
+                for (int i = 0; i < e.length; i++) {
+                    dot += e[i] * me[i];
+                }
+                best = Math.max(best, dot);
+            }
+            return best;
+        } catch (IOException e) {
+            System.err.println("decode failed: " + e.getMessage());
+            return Float.NaN;
+        } finally {
+            cpus.release();
+        }
+    }
+
+    /** Downloads with retries on network errors, 429 and 5xx; returns null after the last attempt fails. */
+    private static byte[] download(String url) {
+        HttpRequest req = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(60)).build();
+        for (int attempt = 1; ; attempt++) {
+            String error;
+            try {
+                HttpResponse<byte[]> r = HTTP.send(req, HttpResponse.BodyHandlers.ofByteArray());
+                if (r.statusCode() == 200) {
+                    return r.body();
+                }
+                error = "HTTP " + r.statusCode();
+                if (r.statusCode() != 429 && r.statusCode() < 500) {
+                    attempt = ATTEMPTS; // client error: retrying won't help
+                }
+            } catch (IOException e) {
+                error = e.toString();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+            if (attempt >= ATTEMPTS) {
+                System.err.println("download failed " + url + ": " + error);
+                return null;
+            }
+            try {
+                Thread.sleep(1000L << attempt); // 2s, 4s, 8s
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+        }
+    }
+}

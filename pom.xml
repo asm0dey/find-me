@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>findme</groupId>
+    <artifactId>find-me</artifactId>
+    <version>0.1.0</version>
+
+    <properties>
+        <maven.compiler.release>25</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <javacpp.version>1.5.13</javacpp.version>
+        <graalpy.version>25.0.4</graalpy.version> <!-- must match the JDK's GraalVM version, or Truffle falls back to interpreter-only -->
+        <opencv.version>4.13.0-${javacpp.version}</opencv.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.jyuzawa</groupId>
+            <artifactId>onnxruntime-api</artifactId>
+            <version>1.30.0-1</version>
+        </dependency>
+        <!-- GraalPy runs gallery-dl in-process to list albums -->
+        <dependency>
+            <groupId>org.graalvm.python</groupId>
+            <artifactId>python-embedding</artifactId>
+            <version>${graalpy.version}</version>
+        </dependency>
+        <!-- OpenCV via JavaCPP: decoding, resize, warpAffine and blobFromImage, as in insightface's Python code -->
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>opencv</artifactId>
+            <version>${opencv.version}</version>
+        </dependency>
+        <!-- this OS's natives only (javacpp.platform comes from the profiles below); the -platform artifacts would pull every OS -->
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>opencv</artifactId>
+            <version>${opencv.version}</version>
+            <classifier>${javacpp.platform}</classifier>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>openblas</artifactId>
+            <version>0.3.31-${javacpp.version}</version>
+            <classifier>${javacpp.platform}</classifier>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>javacpp</artifactId>
+            <version>${javacpp.version}</version>
+            <classifier>${javacpp.platform}</classifier>
+            <scope>runtime</scope>
+        </dependency>
+    </dependencies>
+
+    <!-- native libraries per OS, picked automatically by the build machine's OS and CPU -->
+    <profiles>
+        <profile>
+            <id>linux-x86_64</id>
+            <activation>
+                <os><name>Linux</name><arch>amd64</arch></os>
+            </activation>
+            <properties>
+                <javacpp.platform>linux-x86_64</javacpp.platform>
+            </properties>
+            <dependencies>
+                <!-- ONNX Runtime native libs with the CUDA provider; the CUDA/cuDNN libs themselves come from the system -->
+                <dependency>
+                    <groupId>com.jyuzawa</groupId>
+                    <artifactId>onnxruntime-gpu</artifactId>
+                    <version>1.30.0</version>
+                    <classifier>linux-x86_64</classifier>
+                    <scope>runtime</scope>
+                    <exclusions>
+                        <!-- its pom depends on itself with -linux-x86_64-gpu/-windows-x86_64-gpu classifiers that were never published -->
+                        <exclusion>
+                            <groupId>com.jyuzawa</groupId>
+                            <artifactId>onnxruntime-gpu</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+            </dependencies>
+        </profile>
+        <profile>
+            <id>mac-arm64</id>
+            <activation>
+                <os><family>mac</family><arch>aarch64</arch></os>
+            </activation>
+            <properties>
+                <javacpp.platform>macosx-arm64</javacpp.platform>
+            </properties>
+            <dependencies>
+                <!-- CPU only: there is no GPU build of ONNX Runtime for macOS here, and no Intel-mac build at all -->
+                <dependency>
+                    <groupId>com.jyuzawa</groupId>
+                    <artifactId>onnxruntime-cpu</artifactId>
+                    <version>1.30.0</version>
+                    <classifier>osx-aarch_64</classifier>
+                    <scope>runtime</scope>
+                    <exclusions>
+                        <!-- its pom depends on itself once per OS; keep only this one -->
+                        <exclusion>
+                            <groupId>com.jyuzawa</groupId>
+                            <artifactId>onnxruntime-cpu</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
+
+    <build>
+        <finalName>find-me</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.14.0</version>
+            </plugin>
+            <plugin>
+                <!-- pip-installs gallery-dl into the jar's virtual filesystem at build time -->
+                <groupId>org.graalvm.python</groupId>
+                <artifactId>graalpy-maven-plugin</artifactId>
+                <version>${graalpy.version}</version>
+                <executions>
+                    <execution>
+                        <configuration>
+                            <packages>
+                                <package>gallery-dl==1.32.16</package>
+                                <!-- 2.4+ imports ssl.VERIFY_X509_PARTIAL_CHAIN, which GraalPy 25.0's ssl module lacks -->
+                                <package>urllib3==2.3.0</package>
+                            </packages>
+                        </configuration>
+                        <goals>
+                            <goal>process-graalpy-resources</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.8.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals><goal>copy-dependencies</goal></goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/lib</outputDirectory>
+                            <includeScope>runtime</includeScope>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>findme.FindMe</mainClass>
+                            <addClasspath>true</addClasspath>
+                            <classpathPrefix>lib/</classpathPrefix>
+                        </manifest>
+                        <manifestEntries>
+                            <!-- lets `java -jar` call native code without passing - -enable-native-access -->
+                            <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
