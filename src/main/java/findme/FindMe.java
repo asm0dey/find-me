@@ -29,11 +29,9 @@ import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Value;
 import org.graalvm.python.embedding.GraalPyResources;
 
-/**
- * Find your face in public Flickr albums. Everything but the downloads runs locally, on the GPU when CUDA is available.
- *
- * <p>usage: java -jar target/find-me.jar &lt;reference-photos-dir&gt; &lt;album-url&gt; [&lt;album-url&gt; ...]
- */
+/// Find your face in public Flickr albums. Everything but the downloads runs locally, on the GPU when CUDA is available.
+///
+/// Usage: `java -jar target/find-me.jar <reference-photos-dir> <album-url> [<album-url> ...]`
 public final class FindMe {
 
     private static final float THRESHOLD = 0.40f; // cosine similarity; raise if too many false matches, lower if it misses you
@@ -85,7 +83,7 @@ public final class FindMe {
         }
     }
 
-    /** Fetches insightface's buffalo_l on first use, as insightface does, keeping only the two models this app runs. */
+    /// Fetches insightface's buffalo_l on first use, as insightface does, keeping only the two models this app runs.
     private static void ensureModels() throws Exception {
         if (MODEL_FILES.stream().allMatch(f -> Files.exists(MODELS.resolve(f)))) {
             return;
@@ -154,11 +152,9 @@ public final class FindMe {
         return sum;
     }
 
-    /**
-     * Lists the albums one after another in a single Python context; photos already in seen.txt or repeated across
-     * albums are dropped. Not parallel: only one GraalPy context per process may load native modules (gallery-dl needs
-     * termios), and gallery-dl isn't thread-safe within one interpreter (shared extractor generator and SQLite cache).
-     */
+    /// Lists the albums one after another in a single Python context; photos already in seen.txt or repeated across
+    /// albums are dropped. Not parallel: only one GraalPy context per process may load native modules (gallery-dl needs
+    /// termios), and gallery-dl isn't thread-safe within one interpreter (shared extractor generator and SQLite cache).
     private static List<Photo> listAlbums(List<String> albums, Set<String> seen) throws Exception {
         Map<String, Photo> todo = new LinkedHashMap<>();
         try (Context py = GraalPyResources.contextBuilder().option("engine.WarnInterpreterOnly", "false").build()) {
@@ -227,7 +223,7 @@ public final class FindMe {
         }
     }
 
-    /** Best cosine similarity of any face in the photo, 0 if none, NaN if it can't be decoded. */
+    /// Best cosine similarity of any face in the photo, 0 if none, NaN if it can't be decoded.
     private static float score(Faces faces, Semaphore cpus, byte[] bytes, float[] me) {
         try {
             cpus.acquire();
@@ -253,7 +249,7 @@ public final class FindMe {
         }
     }
 
-    /** Downloads with retries on network errors, 429 and 5xx; returns null after the last attempt fails. */
+    /// Downloads with retries on network errors, 429 and 5xx; returns null after the last attempt fails.
     private static byte[] download(String url) {
         HttpRequest req = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(60)).build();
         for (int attempt = 1; ; attempt++) {

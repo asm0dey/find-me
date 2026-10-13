@@ -12,6 +12,7 @@ import static org.bytedeco.opencv.global.opencv_core.CV_32F;
 import static org.bytedeco.opencv.global.opencv_core.CV_64F;
 import static org.bytedeco.opencv.global.opencv_core.CV_8UC1;
 import static org.bytedeco.opencv.global.opencv_core.CV_8UC3;
+import static org.bytedeco.opencv.global.opencv_dnn.NMSBoxes;
 import static org.bytedeco.opencv.global.opencv_dnn.blobFromImage;
 import static org.bytedeco.opencv.global.opencv_imgcodecs.IMREAD_COLOR;
 import static org.bytedeco.opencv.global.opencv_imgcodecs.imdecode;
@@ -22,29 +23,41 @@ import java.io.IOException;
 import java.nio.FloatBuffer;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import org.bytedeco.javacpp.BytePointer;
 import org.bytedeco.javacpp.DoublePointer;
+import org.bytedeco.javacpp.FloatPointer;
+import org.bytedeco.javacpp.IntPointer;
 import org.bytedeco.javacpp.PointerScope;
 import org.bytedeco.opencv.opencv_core.Mat;
 import org.bytedeco.opencv.opencv_core.Rect;
+import org.bytedeco.opencv.opencv_core.Rect2d;
+import org.bytedeco.opencv.opencv_core.Rect2dVector;
 import org.bytedeco.opencv.opencv_core.Scalar;
 import org.bytedeco.opencv.opencv_core.Size;
 
-/**
- * insightface buffalo_l on ONNX Runtime + OpenCV: SCRFD detection (det_10g) + ArcFace embedding (w600k_r50).
- * Pre/post-processing mirrors insightface's Python code, with the same cv2 calls, so embeddings and the similarity
- * threshold stay comparable.
- * Thread-safe: ONNX Runtime sessions allow concurrent runs.
- */
+/// insightface buffalo_l on ONNX Runtime + OpenCV: SCRFD detection (det_10g) + ArcFace embedding (w600k_r50).
+/// Pre/post-processing mirrors insightface's Python code, with the same cv2 calls, so embeddings and the similarity
+/// threshold stay comparable.
+///
+/// References:
+/// - SCRFD detector: Guo et al., "Sample and Computation Redistribution for Efficient Face Detection",
+///   [arXiv:2105.04714](https://arxiv.org/abs/2105.04714); Python reference:
+///   [model_zoo/scrfd.py](https://github.com/deepinsight/insightface/blob/master/python-package/insightface/model_zoo/scrfd.py)
+/// - ArcFace recognizer: Deng et al., "ArcFace: Additive Angular Margin Loss for Deep Face Recognition",
+///   [arXiv:1801.07698](https://arxiv.org/abs/1801.07698); Python reference:
+///   [model_zoo/arcface_onnx.py](https://github.com/deepinsight/insightface/blob/master/python-package/insightface/model_zoo/arcface_onnx.py)
+/// - Alignment: [utils/face_align.py](https://github.com/deepinsight/insightface/blob/master/python-package/insightface/utils/face_align.py)
+///
+/// Thread-safe: ONNX Runtime sessions allow concurrent runs.
 final class Faces implements AutoCloseable {
 
     private static final int DET_SIZE = 640, REC_SIZE = 112;
     private static final float DET_THRESH = 0.5f, NMS_THRESH = 0.4f;
     private static final int[] STRIDES = {8, 16, 32};
     private static final int ANCHORS = 2;
-    // insightface's ArcFace alignment template for 112x112 crops: eyes, nose, mouth corners
+    // Where the 5 landmarks must land in the 112x112 crop ArcFace was trained on, as x,y pairs: left eye, right eye,
+    // nose tip, left mouth corner, right mouth corner. Copied from arcface_dst in https://github.com/deepinsight/insightface/blob/master/python-package/insightface/utils/face_align.py
     private static final float[] DST = {
         38.2946f, 51.6963f, 73.5318f, 51.5014f, 56.0252f, 71.7366f, 41.5493f, 92.3655f, 70.7299f, 92.2041f
     };
@@ -78,7 +91,7 @@ final class Faces implements AutoCloseable {
         }
     }
 
-    /** Decodes like cv2.imread: BGR, EXIF orientation applied. The Mat belongs to the caller's PointerScope. */
+    /// Decodes like cv2.imread: BGR, EXIF orientation applied. The Mat belongs to the caller's PointerScope.
     static Mat decode(byte[] bytes) throws IOException {
         Mat img = imdecode(new Mat(1, bytes.length, CV_8UC1, new BytePointer(bytes)), IMREAD_COLOR);
         if (img.empty()) {
@@ -87,7 +100,7 @@ final class Faces implements AutoCloseable {
         return img;
     }
 
-    /** L2-normalized 512-d embeddings, one per detected face. {@code img} is BGR, as from {@link #decode}. */
+    /// L2-normalized 512-d embeddings, one per detected face. `img` is BGR, as from [#decode].
     List<float[]> embeddings(Mat img) {
         try (PointerScope scope = new PointerScope()) {
             List<Detection> faces = detect(img);
@@ -107,7 +120,8 @@ final class Faces implements AutoCloseable {
             nh = (int) (DET_SIZE * ratio);
         }
         float scale = (float) nh / h;
-        // insightface: resize into the top-left of a black 640x640, then blobFromImage(1/128, mean 127.5, swapRB)
+        // resize into the top-left of a black 640x640, then blobFromImage(1/128, mean 127.5, swapRB):
+        // SCRFD.detect + SCRFD.forward in https://github.com/deepinsight/insightface/blob/master/python-package/insightface/model_zoo/scrfd.py
         Mat padded = new Mat(DET_SIZE, DET_SIZE, CV_8UC3, Scalar.all(0));
         resize(img, padded.apply(new Rect(0, 0, nw, nh)), new Size(nw, nh));
         Mat blob = blobFromImage(padded, 1 / 128.0, new Size(DET_SIZE, DET_SIZE), Scalar.all(127.5), true, false, CV_32F);
@@ -127,7 +141,7 @@ final class Faces implements AutoCloseable {
         return nms(found);
     }
 
-    /** One GPU run at a time: 16 concurrent CUDA runs exhaust a 6 GB GPU (cudnnCreate fails with CUDNN_STATUS_INTERNAL_ERROR). */
+    /// One GPU run at a time: 16 concurrent CUDA runs exhaust a 6 GB GPU (cudnnCreate fails with CUDNN_STATUS_INTERNAL_ERROR).
     private NamedCollection<OnnxValue> run(Transaction txn) {
         if (!onGpu) {
             return txn.run();
@@ -137,7 +151,8 @@ final class Faces implements AutoCloseable {
         }
     }
 
-    /** SCRFD outputs: [0..2] scores, [3..5] box distances, [6..8] landmark offsets, per stride 8/16/32. */
+    /// SCRFD outputs: `0..2` scores, `3..5` box distances, `6..8` landmark offsets, per stride 8/16/32.
+    /// Port of SCRFD.forward, distance2bbox and distance2kps in [scrfd.py](https://github.com/deepinsight/insightface/blob/master/python-package/insightface/model_zoo/scrfd.py).
     private static void decode(NamedCollection<OnnxValue> out, int s, float scale, List<Detection> found) {
         int stride = STRIDES[s], cells = DET_SIZE / stride;
         FloatBuffer scores = out.get(s).asTensor().getFloatBuffer();
@@ -165,33 +180,29 @@ final class Faces implements AutoCloseable {
         }
     }
 
-    /** Greedy NMS with insightface's +1 pixel area convention. */
+    /// OpenCV's greedy NMS. insightface's own (SCRFD.nms in [scrfd.py](https://github.com/deepinsight/insightface/blob/master/python-package/insightface/model_zoo/scrfd.py)) counts box
+    /// edges as +1 pixel, which only matters for tiny boxes.
     private static List<Detection> nms(List<Detection> dets) {
-        dets.sort(Comparator.comparingDouble(Detection::score).reversed());
-        List<Detection> keep = new ArrayList<>();
-        for (Detection d : dets) {
-            boolean suppressed = false;
-            for (Detection k : keep) {
-                float iw = Math.max(0, Math.min(d.x2, k.x2) - Math.max(d.x1, k.x1) + 1);
-                float ih = Math.max(0, Math.min(d.y2, k.y2) - Math.max(d.y1, k.y1) + 1);
-                float inter = iw * ih;
-                float areaD = (d.x2 - d.x1 + 1) * (d.y2 - d.y1 + 1), areaK = (k.x2 - k.x1 + 1) * (k.y2 - k.y1 + 1);
-                if (inter / (areaD + areaK - inter) > NMS_THRESH) {
-                    suppressed = true;
-                    break;
-                }
-            }
-            if (!suppressed) {
-                keep.add(d);
-            }
+        Rect2dVector boxes = new Rect2dVector();
+        FloatPointer scores = new FloatPointer(dets.size());
+        for (int i = 0; i < dets.size(); i++) {
+            Detection d = dets.get(i);
+            boxes.push_back(new Rect2d(d.x1, d.y1, d.x2 - d.x1, d.y2 - d.y1));
+            scores.put(i, d.score);
         }
-        return keep;
+        IntPointer keep = new IntPointer();
+        NMSBoxes(boxes, scores, DET_THRESH, NMS_THRESH, keep);
+        List<Detection> kept = new ArrayList<>();
+        for (long i = 0; i < keep.limit(); i++) {
+            kept.add(dets.get(keep.get(i)));
+        }
+        return kept;
     }
 
-    /**
-     * insightface norm_crop + ArcFace, one face per run like insightface: w600k_r50 only works with batch size 1
-     * (batched runs return wrong embeddings for every face, with an ONNX Runtime "Expected shape {1,512}" warning).
-     */
+    /// insightface norm_crop + ArcFace, one face per run like insightface: w600k_r50 only works with batch size 1
+    /// (batched runs return wrong embeddings for every face, with an ONNX Runtime "Expected shape `{1,512}`" warning).
+    /// Port of ArcFaceONNX.get + get_feat in [arcface_onnx.py](https://github.com/deepinsight/insightface/blob/master/python-package/insightface/model_zoo/arcface_onnx.py) and norm_crop in
+    /// [face_align.py](https://github.com/deepinsight/insightface/blob/master/python-package/insightface/utils/face_align.py).
     private List<float[]> embed(Mat img, List<Detection> faces) {
         List<float[]> result = new ArrayList<>(faces.size());
         for (Detection face : faces) {
@@ -219,10 +230,10 @@ final class Faces implements AutoCloseable {
         return result;
     }
 
-    /**
-     * Least-squares similarity transform from the 5 landmarks to the template, as 2x3 cv2 matrix. Same result as the
-     * skimage Umeyama estimate insightface uses; cv2.estimateAffinePartial2D would differ (RANSAC).
-     */
+    /// Least-squares similarity transform from the 5 landmarks to the template, as 2x3 cv2 matrix. Same result as the
+    /// skimage Umeyama estimate insightface uses (estimate_norm in [face_align.py](https://github.com/deepinsight/insightface/blob/master/python-package/insightface/utils/face_align.py);
+    /// Umeyama, "Least-squares estimation of transformation parameters between two point patterns", IEEE TPAMI 13(4),
+    /// 1991). cv2.estimateAffinePartial2D would differ (RANSAC), and bytedeco's calib3d drags in highgui/GTK.
     private static Mat align(float[] kps) {
         float msx = 0, msy = 0, mdx = 0, mdy = 0;
         for (int i = 0; i < 5; i++) {
