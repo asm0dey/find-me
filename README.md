@@ -57,7 +57,7 @@ mvn -Pnative package
 target/find-me ~/Pictures/me https://flic.kr/s/aHBqjD7cDj
 ```
 
-Builds `target/find-me`, a standalone executable (~1.5 GB: it embeds the native libraries and the Python environment), in about 2.5 minutes. Reflection, resource and FFM metadata is in `src/main/resources/META-INF/native-image/findme/find-me/reachability-metadata.json`, recorded with the tracing agent on a real run:
+Builds `target/find-me`, a standalone executable (~570 MB, mostly the native libraries it embeds; ONNX Runtime's CUDA provider alone is 259 MB), in about 2.5 minutes. Reflection, resource and FFM metadata is in `src/main/resources/META-INF/native-image/findme/find-me/reachability-metadata.json`, recorded with the tracing agent on a real run:
 
 ```
 java -agentlib:native-image-agent=config-merge-dir=src/main/resources/META-INF/native-image/findme/find-me -jar target/find-me.jar <ref-dir> <album-url>
