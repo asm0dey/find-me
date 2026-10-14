@@ -142,6 +142,8 @@
                                 <buildArg>-H:+ForeignAPISupport</buildArg>
                                 <buildArg>-H:+SharedArenaSupport</buildArg> <!-- it frees tensors with Arena.ofShared -->
                                 <buildArg>--enable-native-access=ALL-UNNAMED</buildArg>
+                                <!-- metadata names this OS's native libraries, so there is one per platform (see README) -->
+                                <buildArg>-H:ConfigurationFileDirectories=${project.basedir}/src/main/native-image/${javacpp.platform}</buildArg>
                                 <!-- bytedeco's bundled metadata embeds every OpenCV/OpenBLAS module; ours, recorded on real runs, has just the ones used -->
                                 <buildArg>--exclude-config</buildArg>
                                 <buildArg>.*/org/bytedeco/.*\.jar</buildArg>

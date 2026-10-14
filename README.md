@@ -57,13 +57,31 @@ mvn -Pnative package
 target/find-me ~/Pictures/me https://flic.kr/s/aHBqjD7cDj
 ```
 
-Builds `target/find-me`, a standalone executable (~570 MB, mostly the native libraries it embeds; ONNX Runtime's CUDA provider alone is 259 MB), in about 2.5 minutes. Reflection, resource and FFM metadata is in `src/main/resources/META-INF/native-image/findme/find-me/reachability-metadata.json`, recorded with the tracing agent on a real run:
+Builds `target/find-me`, a standalone executable (~570 MB, mostly the native libraries it embeds; ONNX Runtime's CUDA provider alone is 259 MB), in about 2.5 minutes. Run it with the same `LD_LIBRARY_PATH` as the jar if the CUDA libraries aren't installed system-wide (see Requirements); without them it falls back to the CPU, as on the JVM.
+
+Reflection, resource and FFM metadata is per platform, because it names that platform's native libraries: `src/main/native-image/<platform>/reachability-metadata.json`, where `<platform>` is `javacpp.platform` from the OS profile (`linux-x86_64`, `macosx-arm64`). Only `linux-x86_64` is recorded so far.
+
+#### Recording metadata (on a new platform, or after code or dependency changes)
+
+The tracing agent records what a real run touches, so run the jar on the platform itself and make it go through every code path:
 
 ```
-java -agentlib:native-image-agent=config-merge-dir=src/main/resources/META-INF/native-image/findme/find-me -jar target/find-me.jar <ref-dir> <album-url>
+mvn clean package
+P=$PWD M=$PWD/src/main/native-image/linux-x86_64   # macosx-arm64 on a Mac
+mkdir -p "$M" && cd "$(mktemp -d)"                 # empty dir: no seen.txt, so every photo gets scanned
+java -agentlib:native-image-agent=config-merge-dir="$M" -jar "$P/target/find-me.jar" ~/Pictures/me https://flic.kr/s/aHBqjD7cDj
 ```
 
-After re-recording, move the `directUpcalls` entry the agent writes for ONNX Runtime's log callback to `upcalls` (see Gotchas).
+- **Linux:** record twice, once with the CUDA libraries on `LD_LIBRARY_PATH` and once without. ONNX Runtime's CUDA setup and the CPU fallback take different paths, and an image recorded without CUDA dies at startup on a machine that has it (`NoSuchMethodException: ...SessionOptionsAppendExecutionProvider_CUDA_V2$Function.apply`). `config-merge-dir` merges the runs.
+- **macOS:** nothing to export, no `DYLD_LIBRARY_PATH` (the Mac counterpart of `LD_LIBRARY_PATH`). CoreML is part of the OS, and ONNX Runtime, OpenCV and OpenBLAS unpack their own `.dylib`s from the jars. A run where CoreML loads doesn't record the CPU fallback; untested whether that fallback then works in the native image.
+
+Then move the `directUpcalls` the agent writes to `upcalls` (see Gotchas), and build and test the native image:
+
+```
+jq '.foreign.upcalls = ((.foreign.upcalls // []) + [(.foreign.directUpcalls // [])[] | del(.class, .method)] | unique) | del(.foreign.directUpcalls)' \
+  "$M/reachability-metadata.json" > "$M/tmp.json" && mv -f "$M/tmp.json" "$M/reachability-metadata.json"
+cd "$P" && mvn -Pnative package
+```
 
 The first build downloads ~500 MB into `~/.m2`: ONNX Runtime (~305 MB with the CUDA provider on Linux), GraalPy and Truffle (~150 MB), OpenCV/OpenBLAS for this OS (~53 MB on Linux); and pip-installs gallery-dl and its dependencies from PyPI into the jar.
 
