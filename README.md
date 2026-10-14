@@ -86,7 +86,7 @@ GraalPy runs interpreted on purpose (`truffle.TruffleRuntime` is set at the star
 | GraalPy 25.0.4, interpreted | 21.4 s |
 | CPython 3.14 gallery-dl, for reference | 17.5 s, 8.7 s |
 
-Listing is a short, network-bound burst that ends before JIT-compiled code gets reused, so compiling only costs time. It happens once per run; scanning the photos takes much longer.
+Listing is a short, network-bound burst that ends before JIT-compiled code gets reused, so compiling only costs time. It happens once per run. On CUDA it takes about twice as long as scanning a 215-photo album (see below); scanning grows with album size, listing much less.
 
 ### JVM vs native image
 
