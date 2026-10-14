@@ -112,6 +112,40 @@
                 </dependency>
             </dependencies>
         </profile>
+        <profile>
+            <!-- `mvn -Pnative package` builds target/find-me, a native executable; needs native-image on the JDK -->
+            <id>native</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.graalvm.buildtools</groupId>
+                        <artifactId>native-maven-plugin</artifactId>
+                        <version>1.1.14</version>
+                        <extensions>true</extensions>
+                        <executions>
+                            <execution>
+                                <id>build-native</id>
+                                <goals><goal>compile-no-fork</goal></goals>
+                                <phase>package</phase>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <imageName>find-me</imageName>
+                            <mainClass>findme.FindMe</mainClass>
+                            <buildArgs>
+                                <!-- Python interpreted, as on the JVM (see main): also leaves the Graal compiler out of the image -->
+                                <buildArg>-Dtruffle.TruffleRuntime=com.oracle.truffle.api.impl.DefaultTruffleRuntime</buildArg>
+                                <!-- onnxruntime-java calls ONNX Runtime through FFM -->
+                                <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
+                                <buildArg>-H:+ForeignAPISupport</buildArg>
+                                <buildArg>-H:+SharedArenaSupport</buildArg> <!-- it frees tensors with Arena.ofShared -->
+                                <buildArg>--enable-native-access=ALL-UNNAMED</buildArg>
+                            </buildArgs>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
     </profiles>
 
     <build>

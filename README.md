@@ -50,6 +50,21 @@ mvn clean package
 
 Use `clean` after changing dependency versions, or stale jars stay in `target/lib`.
 
+### Native image
+
+```
+mvn -Pnative package
+target/find-me ~/Pictures/me https://flic.kr/s/aHBqjD7cDj
+```
+
+Builds `target/find-me`, a standalone executable (~1.5 GB: it embeds the native libraries and the Python environment), in about 2.5 minutes. Reflection, resource and FFM metadata is in `src/main/resources/META-INF/native-image/findme/find-me/reachability-metadata.json`, recorded with the tracing agent on a real run:
+
+```
+java -agentlib:native-image-agent=config-merge-dir=src/main/resources/META-INF/native-image/findme/find-me -jar target/find-me.jar <ref-dir> <album-url>
+```
+
+After re-recording, move the `directUpcalls` entry the agent writes for ONNX Runtime's log callback to `upcalls` (see Gotchas).
+
 The first build downloads ~500 MB into `~/.m2`: ONNX Runtime (~305 MB with the CUDA provider on Linux), GraalPy and Truffle (~150 MB), OpenCV/OpenBLAS for this OS (~53 MB on Linux); and pip-installs gallery-dl and its dependencies from PyPI into the jar.
 
 ## Gotchas
@@ -57,6 +72,8 @@ The first build downloads ~500 MB into `~/.m2`: ONNX Runtime (~305 MB with the C
 - `onnxruntime-gpu` 1.30.0's pom depends on itself with `-linux-x86_64-gpu`/`-windows-x86_64-gpu` classifiers that were never published; `pom.xml` excludes them. `onnxruntime-cpu` lists itself once per OS and is excluded the same way, so only one OS gets pulled.
 - GraalPy 25.0.4 is Python 3.12, and its `ssl` module lacks `VERIFY_X509_PARTIAL_CHAIN`. urllib3 2.4+ imports it and, when that fails, can't make any HTTPS connection ("Can't create an SSLContext object without an ssl module"). `pom.xml` pins `urllib3==2.3.0`.
 - urllib3 warns at startup that `ssl` is "GraalVM JSSE", not OpenSSL. Harmless.
+- In native image, `directUpcalls` ignore an `AddressLayout`'s target layout, so upcall pointers arrive zero-length ([reported upstream](https://github.com/oracle/graal/issues/14676)). onnxruntime-java's log callback then dies reading the message, killing the process the first time ONNX Runtime logs. Registered under plain `upcalls` it works.
+- Native image needs `-H:+SharedArenaSupport`: onnxruntime-java frees tensors with `Arena.ofShared`.
 - Should GraalPy's JIT ever be wanted, `graalpy.version` must equal the JDK's GraalVM version (`GRAALVM_VERSION` in the JDK's `release` file); GraalPy 25.4.4.1.1 refuses NIK 25.0.3 and 25.0.4.
 
 ## Performance
