@@ -1,15 +1,17 @@
 # find-me
 
-Finds photos of you in public Flickr albums. Give it a folder of photos of yourself and one or more album links; it learns your face, goes through every photo in the albums, and lists the ones you appear in. Face recognition runs locally, on the GPU when one is available; only the photos themselves are downloaded.
+Finds photos of you in public Flickr albums and local folders. Give it a folder of photos of yourself and one or more album links or folders; it learns your face, goes through every photo in the albums, and lists the ones you appear in. Face recognition runs locally, on the GPU when one is available; only the photos themselves are downloaded.
 
 ```
-java -jar target/find-me.jar ~/Pictures/me https://flic.kr/s/aHBqjD7cDj https://www.flickr.com/photos/<user>/albums/<id>
+java -jar target/find-me.jar ~/Pictures/me https://flic.kr/s/aHBqjD7cDj https://www.flickr.com/photos/<user>/albums/<id> ~/Pictures/conference
 ```
+
+An argument that is an existing directory is scanned recursively for `.jpg`, `.jpeg`, `.png`, `.webp`, `.bmp` and `.tif(f)` files; anything else is treated as an album link.
 
 Output:
 
-- `matches.txt`: one line per photo you're in, `MATCH <similarity> <flickr page URL>`, also printed to stdout as they're found.
-- `seen.txt`: IDs of photos already checked. Re-running skips them, so an interrupted run resumes where it stopped and a re-run only checks photos added since. Photos whose download failed aren't marked seen and get retried.
+- `matches.txt`: one line per photo you're in, `MATCH <similarity> <flickr page URL or absolute file path>`, also printed to stdout as they're found.
+- `seen.txt`: IDs (Flickr photo IDs, or absolute paths for local files) of photos already checked. Re-running skips them, so an interrupted run resumes where it stopped and a re-run only checks photos added since. Photos whose download failed aren't marked seen and get retried.
 
 Both are written to the current directory.
 

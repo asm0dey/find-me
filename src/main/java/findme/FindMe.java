@@ -29,9 +29,9 @@ import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Value;
 import org.graalvm.python.embedding.GraalPyResources;
 
-/// Find your face in public Flickr albums. Everything but the downloads runs locally, on the GPU when CUDA is available.
+/// Find your face in public Flickr albums and local folders. Everything but the downloads runs locally, on the GPU when CUDA is available.
 ///
-/// Usage: `java -jar target/find-me.jar <reference-photos-dir> <album-url> [<album-url> ...]`
+/// Usage: `java -jar target/find-me.jar <reference-photos-dir> <album-url-or-dir> [<album-url-or-dir> ...]`
 public final class FindMe {
 
     private static final float THRESHOLD = 0.40f; // cosine similarity; raise if too many false matches, lower if it misses you
@@ -70,14 +70,26 @@ public final class FindMe {
         // (27 s with the JIT vs 21 s without on a 215-photo album). Must be set before Truffle loads.
         System.setProperty("truffle.TruffleRuntime", "com.oracle.truffle.api.impl.DefaultTruffleRuntime");
         if (args.length < 2) {
-            System.err.println("usage: java -jar find-me.jar <reference-photos-dir> <album-url> [<album-url> ...]");
+            System.err.println("usage: java -jar find-me.jar <reference-photos-dir> <album-url-or-dir> [<album-url-or-dir> ...]");
             System.exit(1);
         }
         ensureModels();
         try (Faces faces = new Faces(MODELS)) {
             float[] me = reference(faces, Path.of(args[0]));
             Set<String> seen = Files.exists(SEEN) ? new HashSet<>(Files.readAllLines(SEEN)) : new HashSet<>();
-            List<Photo> todo = listAlbums(List.of(args).subList(1, args.length), seen);
+            List<String> albums = new ArrayList<>();
+            Map<String, Photo> found = new LinkedHashMap<>();
+            for (String a : List.of(args).subList(1, args.length)) {
+                if (Files.isDirectory(Path.of(a))) {
+                    listDir(Path.of(a), seen, found);
+                } else {
+                    albums.add(a);
+                }
+            }
+            if (!albums.isEmpty()) { // skips starting Python when there's nothing to list
+                listAlbums(albums, seen, found);
+            }
+            List<Photo> todo = new ArrayList<>(found.values());
             System.err.println(todo.size() + " photos to check");
             scan(faces, me, todo);
         }
@@ -155,8 +167,7 @@ public final class FindMe {
     /// Lists the albums one after another in a single Python context; photos already in seen.txt or repeated across
     /// albums are dropped. Not parallel: only one GraalPy context per process may load native modules (gallery-dl needs
     /// termios), and gallery-dl isn't thread-safe within one interpreter (shared extractor generator and SQLite cache).
-    private static List<Photo> listAlbums(List<String> albums, Set<String> seen) throws Exception {
-        Map<String, Photo> todo = new LinkedHashMap<>();
+    private static void listAlbums(List<String> albums, Set<String> seen, Map<String, Photo> todo) throws Exception {
         try (Context py = GraalPyResources.contextBuilder().option("engine.WarnInterpreterOnly", "false").build()) {
             Value list = py.eval("python", LIST_ALBUM);
             for (int n = 0; n < albums.size(); n++) {
@@ -177,7 +188,21 @@ public final class FindMe {
                 }
             }
         }
-        return new ArrayList<>(todo.values());
+    }
+
+    /// Image files under `dir`, recursively; the absolute path is both the seen.txt ID and what matches.txt lists.
+    private static void listDir(Path dir, Set<String> seen, Map<String, Photo> todo) throws IOException {
+        int before = todo.size();
+        try (var s = Files.walk(dir)) {
+            s.filter(Files::isRegularFile)
+                    .filter(f -> f.getFileName().toString().toLowerCase(Locale.ROOT)
+                            .matches(".*\\.(jpe?g|png|webp|bmp|tiff?)"))
+                    .map(f -> f.toAbsolutePath().normalize())
+                    .sorted()
+                    .filter(f -> !seen.contains(f.toString()))
+                    .forEach(f -> todo.putIfAbsent(f.toString(), new Photo(f.toString(), f.toUri().toString(), f.toString())));
+        }
+        System.err.println("listed folder " + dir + " (" + (todo.size() - before) + " new photos)");
     }
 
     private static void scan(Faces faces, float[] me, List<Photo> todo) throws Exception {
@@ -191,7 +216,7 @@ public final class FindMe {
                 inFlight.acquire();
                 pool.execute(() -> { // execute, not submit: a failure prints instead of vanishing into an unread Future
                     try {
-                        byte[] bytes = download(p.imageUrl());
+                        byte[] bytes = p.imageUrl().startsWith("file:") ? read(p.imageUrl()) : download(p.imageUrl());
                         if (bytes == null) {
                             return; // not marked seen, so a re-run retries it
                         }
@@ -246,6 +271,16 @@ public final class FindMe {
             return Float.NaN;
         } finally {
             cpus.release();
+        }
+    }
+
+    /// Reads a local photo; null if unreadable, so like a failed download it isn't marked seen.
+    private static byte[] read(String uri) {
+        try {
+            return Files.readAllBytes(Path.of(URI.create(uri)));
+        } catch (IOException e) {
+            System.err.println("read failed " + uri + ": " + e.getMessage());
+            return null;
         }
     }
 
