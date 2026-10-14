@@ -88,6 +88,20 @@ GraalPy runs interpreted on purpose (`truffle.TruffleRuntime` is set at the star
 
 Listing is a short, network-bound burst that ends before JIT-compiled code gets reused, so compiling only costs time. It happens once per run; scanning the photos takes much longer.
 
+### JVM vs native image
+
+Liberica NIK 25.0.4, CUDA, 5 reference photos, the same 215-photo album from an empty `seen.txt`; two runs each, over the network. Both find the same match at the same similarity.
+
+| Phase | JVM | Native image |
+|---|---|---|
+| Learn face (startup, model load, 5 photos) | 4.1 s, 3.8 s | 3.3 s, 3.1 s |
+| List album | 18.7 s, 17.7 s | 10.3 s, 10.1 s |
+| Scan 215 photos | 8.2 s, 7.8 s | 7.7 s, 7.9 s |
+| **Total** | **31.0 s, 29.3 s** | **21.3 s, 21.1 s** |
+| Peak RSS | 2.6 GB, 2.8 GB | 2.8 GB, 2.7 GB |
+
+The native image wins only on album listing (GraalPy); scanning is GPU- and network-bound and takes the same time.
+
 ## Verified
 
 - Linux, CUDA, Liberica NIK 25.0.4: a full run on a 215-photo album takes 56 s and finds the same match, with the same similarity (0.77), as insightface's Python pipeline.
