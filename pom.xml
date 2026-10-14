@@ -95,7 +95,7 @@
                 <javacpp.platform>macosx-arm64</javacpp.platform>
             </properties>
             <dependencies>
-                <!-- CPU only: there is no GPU build of ONNX Runtime for macOS here, and no Intel-mac build at all -->
+                <!-- the "cpu" build includes the CoreML provider; there is no Intel-mac build -->
                 <dependency>
                     <groupId>com.jyuzawa</groupId>
                     <artifactId>onnxruntime-cpu</artifactId>

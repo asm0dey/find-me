@@ -57,9 +57,9 @@ mvn -Pnative package
 target/find-me ~/Pictures/me https://flic.kr/s/aHBqjD7cDj
 ```
 
-Builds `target/find-me`, a standalone executable (~570 MB, mostly the native libraries it embeds; ONNX Runtime's CUDA provider alone is 259 MB), in about 2.5 minutes. Run it with the same `LD_LIBRARY_PATH` as the jar if the CUDA libraries aren't installed system-wide (see Requirements); without them it falls back to the CPU, as on the JVM.
+Builds `target/find-me`, a standalone executable (~570 MB, mostly the native libraries it embeds; ONNX Runtime's CUDA provider alone is 259 MB), in about 2.5 minutes (on macOS: ~340 MB, under 2 minutes). Run it with the same `LD_LIBRARY_PATH` as the jar if the CUDA libraries aren't installed system-wide (see Requirements); without them it falls back to the CPU, as on the JVM.
 
-Reflection, resource and FFM metadata is per platform, because it names that platform's native libraries: `src/main/native-image/<platform>/reachability-metadata.json`, where `<platform>` is `javacpp.platform` from the OS profile (`linux-x86_64`, `macosx-arm64`). Only `linux-x86_64` is recorded so far.
+Reflection, resource and FFM metadata is per platform, because it names that platform's native libraries: `src/main/native-image/<platform>/reachability-metadata.json`, where `<platform>` is `javacpp.platform` from the OS profile (`linux-x86_64`, `macosx-arm64`).
 
 #### Recording metadata (on a new platform, or after code or dependency changes)
 
@@ -123,9 +123,9 @@ The native image wins only on album listing (GraalPy); scanning is GPU- and netw
 ## Verified
 
 - Linux, CUDA, Liberica NIK 25.0.4: a full run on a 215-photo album takes 56 s and finds the same match, with the same similarity (0.77), as insightface's Python pipeline.
+- macOS 26 on Apple Silicon (M2), CoreML, Liberica NIK 25.0.4 (`25.0.4.r25-nik`; sdkman there has no `fx` build): jar and native image both find the same match at 0.77. CoreML takes 133 of the detector's 153 nodes. The native image runs the 215-photo album in 48 s. The first JVM run started with no `~/.insightface` and downloaded the models itself.
 
 ## Not verified yet
 
-- Anything on macOS: CoreML being present in the macOS ONNX Runtime build, GraalPy's and JavaCPP's Mac natives, inference speed. The mac profile selection was only checked by faking `os.name`/`os.arch`.
-- First-run model download (never run against an empty model directory).
+- macOS CPU fallback in the native image (the metadata was recorded with CoreML loading), and Mac JVM vs native timings without the tracing agent.
 - OpenCV's and ONNX Runtime's own thread pools vs the per-photo parallelism (possible CPU oversubscription).
