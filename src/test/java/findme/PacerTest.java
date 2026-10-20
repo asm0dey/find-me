@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -16,16 +15,17 @@ import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 
 class PacerTest {
-
     private static final byte[] JPEG = jpeg();
 
     @org.junit.jupiter.api.BeforeAll
     static void loadOpenCv() throws IOException {
-        Faces.decode(JPEG).close(); // the first decode loads the natives: keep that out of the holds measured below
+        // the first decode loads the natives: keep that out of the holds measured below
+        Faces.decode(JPEG).close();
     }
-    private final List<Long> sleeps = new java.util.concurrent.CopyOnWriteArrayList<>();
 
-    private static final long FAR = Long.MAX_VALUE / 4; // a deadline nobody reaches: full pace
+    private final List<Long> sleeps = new java.util.concurrent.CopyOnWriteArrayList<>();
+    // a deadline nobody reaches: full pace
+    private static final long FAR = Long.MAX_VALUE / 4;
 
     @Test
     void holdsMatchesLongerThanMisses() {
@@ -37,17 +37,25 @@ class PacerTest {
 
     @Test
     void paceFitsTheDeadline() {
-        assertEquals(new Pacer.Pace(150, 1500), Pacer.pace(600_000, 100, 3)); // plenty of time
+        // plenty of time
+        assertEquals(new Pacer.Pace(150, 1500), Pacer.pace(600_000, 100, 3));
         // misses at the floor still don't fit: matches share what is left, (95 s − 2500 × 30 ms) / 14
         assertEquals(new Pacer.Pace(30, 1428), Pacer.pace(95_000, 2500, 14));
-        assertEquals(new Pacer.Pace(30, 1000), Pacer.pace(60_000, 1500, 20)); // but no shorter than 1000 ms
-        assertEquals(new Pacer.Pace(30, 1500), Pacer.pace(96_000, 2500, 14)); // just fits at the floor: full holds
-        assertEquals(new Pacer.Pace(30, 1000), Pacer.pace(20_000, 100, 40)); // matches take at most half, floor 1000
-        assertEquals(new Pacer.Pace(125, 1500), Pacer.pace(40_000, 200, 10)); // (40 s − 15 s) / 200
-        assertEquals(new Pacer.Pace(62, 1250), Pacer.pace(25_000, 200, 10)); // 15 s of matches > half of 25 s
-        assertEquals(new Pacer.Pace(30, 1000), Pacer.pace(0, 10, 1)); // late: as fast as allowed
+        // but no shorter than 1000 ms
+        assertEquals(new Pacer.Pace(30, 1000), Pacer.pace(60_000, 1500, 20));
+        // just fits at the floor: full holds
+        assertEquals(new Pacer.Pace(30, 1500), Pacer.pace(96_000, 2500, 14));
+        // matches take at most half, floor 1000
+        assertEquals(new Pacer.Pace(30, 1000), Pacer.pace(20_000, 100, 40));
+        // (40 s − 15 s) / 200
+        assertEquals(new Pacer.Pace(125, 1500), Pacer.pace(40_000, 200, 10));
+        // 15 s of matches > half of 25 s
+        assertEquals(new Pacer.Pace(62, 1250), Pacer.pace(25_000, 200, 10));
+        // late: as fast as allowed
+        assertEquals(new Pacer.Pace(30, 1000), Pacer.pace(0, 10, 1));
         assertEquals(new Pacer.Pace(30, 1000), Pacer.pace(-5, 10, 1));
-        assertEquals(new Pacer.Pace(150, 1500), Pacer.pace(10_000, 0, 0)); // nothing left but this photo
+        // nothing left but this photo
+        assertEquals(new Pacer.Pace(150, 1500), Pacer.pace(10_000, 0, 0));
     }
 
     @Test
@@ -59,21 +67,25 @@ class PacerTest {
         var run = new java.util.concurrent.FutureTask<>(p::run);
         Thread.ofPlatform().start(run);
         Thread.sleep(200);
-        assertTrue(published.isEmpty()); // nothing scanned yet: nothing shown
+        // nothing scanned yet: nothing shown
+        assertTrue(published.isEmpty());
         queue.add(scored(0.1f));
         while (published.isEmpty()) {
             //noinspection BusyWait
-            Thread.sleep(5); // a deliberate poll: the pacer runs on its own thread
+            // a deliberate poll: the pacer runs on its own thread
+            Thread.sleep(5);
         }
         Scanning first = (Scanning) published.getFirst();
         assertEquals(List.of(1, 2, false), List.of(first.shown(), first.total(), first.totalFinal()));
         Thread.sleep(200);
-        assertEquals(1, published.size()); // the queue is empty: it waits for the next photo
+        // the queue is empty: it waits for the next photo
+        assertEquals(1, published.size());
         p.add(1);
         p.listingFinished();
         queue.add(scored(0.2f));
         queue.add(scored(0.3f));
-        run.get(5, java.util.concurrent.TimeUnit.SECONDS); // returns once all 3 are shown
+        // returns once all 3 are shown
+        run.get(5, java.util.concurrent.TimeUnit.SECONDS);
         Scanning last = (Scanning) published.getLast();
         assertEquals(List.of(3, 3, true), List.of(last.shown(), last.total(), last.totalFinal()));
     }
@@ -83,7 +95,8 @@ class PacerTest {
         var queue = new LinkedBlockingQueue<Pacer.Result>(List.of(scored(0.1f)));
         Pacer[] p = new Pacer[1];
         p[0] = new Pacer(queue, List.of(), new float[] {1, 0}, _ -> {}, ms -> {
-            if (sleeps.isEmpty()) { // the last album arrives while the first photo is on screen
+            if (sleeps.isEmpty()) {
+                // the last album arrives while the first photo is on screen
                 p[0].add(1);
                 p[0].listingFinished();
                 queue.add(scored(0.2f));
@@ -93,8 +106,10 @@ class PacerTest {
         p[0].add(1);
         p[0].run();
         assertEquals(2, sleeps.size());
-        assertTrue(sleeps.getFirst() <= 30, "while listing: " + sleeps); // the total is unknown: as fast as allowed
-        assertTrue(sleeps.getLast() > 100, "listed: " + sleeps); // then the full pace, with time to spare
+        // the total is unknown: as fast as allowed
+        assertTrue(sleeps.getFirst() <= 30, "while listing: " + sleeps);
+        // then the full pace, with time to spare
+        assertTrue(sleeps.getLast() > 100, "listed: " + sleeps);
     }
 
     @Test
@@ -141,8 +156,14 @@ class PacerTest {
     void boxesAreScaledToTheDisplayedImage() throws InterruptedException {
         // a 2160-wide photo shows at 1080: every coordinate halves; similarity is the face's own dot with me
         byte[] big = jpeg(2160, 1080);
-        var face = new Faces.Face(100, 200, 300, 400, new float[] {10, 20, 30, 40, 50, 60, 70, 80, 90, 100},
-                new float[] {0.6f, 0.8f});
+        var face = new Faces.Face(
+                100,
+                200,
+                300,
+                400,
+                new float[] {10, 20, 30, 40, 50, 60, 70, 80, 90, 100},
+                new float[] {0.6f, 0.8f}
+        );
         var queue = new LinkedBlockingQueue<Pacer.Result>(List.of(new Pacer.Scored(big, List.of(face), 0.6f)));
         List<DemoState> published = new ArrayList<>();
         pacer(queue, published::add).run();

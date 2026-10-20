@@ -3,13 +3,11 @@ package findme;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /// Records with array components compare, hash and print by the arrays' contents (a photo's bytes print as their count).
 class RecordArraysTest {
-
     @Test
     void face() {
         var a = new Faces.Face(1, 2, 3, 4, new float[] {5, 6}, new float[] {0.25f, 0.75f});

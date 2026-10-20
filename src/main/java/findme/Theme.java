@@ -17,18 +17,17 @@ final class Theme {
     static final Color TEXT = new Color(0xF8FAFC);
     static final Color TRACK = new Color(0x272F42);
     static final Color SLOT_BORDER = new Color(0x334155);
-
     /// How long each photo stays on screen, in ms: a photo without the person, one with, and the lock-on animation.
     static final long MISS_MS = 150, MATCH_MS = 1500, LOCK_ON_MS = 300;
     /// The fastest the display may go to make its deadline, and that deadline: launch + RUN_MS, so the end gallery gets
     /// the rest of a 2-minute recording.
     /// No match shows for less than MIN_MATCH_MS, so the stamp stays readable.
     static final long MIN_MISS_MS = 30, MIN_MATCH_MS = 1000, RUN_MS = 110_000;
-
     private static final Font REGULAR = load("pragmasevka-nf-regular.ttf");
     private static final Font BOLD = load("pragmasevka-nf-bold.ttf");
 
-    private Theme() {}
+    private Theme() {
+    }
 
     static Font regular(float px) {
         return REGULAR.deriveFont(px);
@@ -48,7 +47,9 @@ final class Theme {
 
     private static Font load(String name) {
         try (var in = Theme.class.getResourceAsStream("/fonts/" + name)) {
-            if (in == null) throw new IllegalStateException("missing bundled font " + name);
+            if (in == null) {
+                throw new IllegalStateException("missing bundled font " + name);
+            }
             return Font.createFont(Font.TRUETYPE_FONT, in);
         } catch (IOException | FontFormatException e) {
             throw new IllegalStateException("cannot load bundled font " + name, e);

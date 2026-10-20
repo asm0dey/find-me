@@ -13,14 +13,12 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import sprouts.Var;
 import swingtree.SwingTree;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Lays the real window out at 1080×960 and paints it into an image through every phase, in publish order on one
 /// state property, as the app does: no exception, not blank, and the regions where the design puts them.
 class DemoPaintTest {
-
     @BeforeAll
     static void scaleOne() {
         SwingTree.initializeUsing(cfg -> cfg.uiScaleFactor(1f));
@@ -92,11 +90,13 @@ class DemoPaintTest {
         return SwingUtilities.convertRectangle(c.getParent(), c.getBounds(), view);
     }
 
-    @Test void everyPhasePaintsThroughTheComponentTree() throws Exception {
+    @Test
+    void everyPhasePaintsThroughTheComponentTree() throws Exception {
         List<DemoState> states = List.of(
                 new Learning(List.of(), 0, 0, null, 0, 0, 0),
                 new Learning(crops(30), 30, 40, shot(720, 1080, 1), 0, 0, 0),
-                new Learning(crops(3), 3, 40, shot(720, 1080, 1), 2514, 5, 5), // listing meanwhile
+                // listing meanwhile
+                new Learning(crops(3), 3, 40, shot(720, 1080, 1), 2514, 5, 5),
                 new Listing(crops(30), 0, 5, 0, 1234),
                 new Listing(crops(3), 0, 0, 12, 61_000),
                 new Scanning(crops(30), 3, 215, 0, true, shot(1080, 720, .1f, .05f, .2f), false),
@@ -107,7 +107,8 @@ class DemoPaintTest {
                 new Done(crops(30), 13, matches(4, 1080, 675), 6_800),
                 new Done(crops(30), 13, matches(9, 1080, 1080), 6_800),
                 new Done(crops(30), 13, List.of(), 6_800),
-                new Failed("no usable reference photos, and a message long enough to need wrapping onto lines"));
+                new Failed("no usable reference photos, and a message long enough to need wrapping onto lines")
+        );
         SwingUtilities.invokeAndWait(() -> {
             Var<DemoState> state = Var.of(DemoState.class, states.getFirst());
             JComponent view = DemoView.create(state);
@@ -118,7 +119,8 @@ class DemoPaintTest {
         });
     }
 
-    @Test void regionsSitWhereTheDesignPutsThem() throws Exception {
+    @Test
+    void regionsSitWhereTheDesignPutsThem() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             Var<DemoState> state = Var.of(DemoState.class, new Learning(crops(3), 3, 40, shot(720, 1080, 1), 0, 0, 0));
             JComponent view = DemoView.create(state);
@@ -136,11 +138,13 @@ class DemoPaintTest {
             state.set(new Done(crops(30), 13, matches(9, 1080, 1080), 6_800));
             paint(view, "gallery");
             assertEquals(new Rectangle(40, 172, 320, 364), at(view, 50, 180));
-            assertEquals(new Rectangle(720, 556, 320, 364), at(view, 1030, 910)); // the "+N more" tile
+            // the "+N more" tile
+            assertEquals(new Rectangle(720, 556, 320, 364), at(view, 1030, 910));
         });
     }
 
-    @Test void matchAnimationPaintsMidLockOnAndMidStamp() {
+    @Test
+    void matchAnimationPaintsMidLockOnAndMidStamp() {
         Shot match = shot(1080, 720, .7f, .1f);
         for (float progress : new float[] {0, .25f, .75f, 1}) {
             BufferedImage img = new BufferedImage(672, 630, BufferedImage.TYPE_INT_RGB);

@@ -36,27 +36,32 @@ import org.jspecify.annotations.Nullable;
 ///
 /// Usage: `java -jar target/find-me.jar [--demo] <reference-photos-dir> <album-url-or-dir> [<album-url-or-dir> ...]`;
 /// `--demo` runs the same search as an on-screen show ([Demo]).
-@SuppressWarnings({"java:S106", "java:S1168"}) // a CLI: stdout/stderr are its UI; null bytes mean "failed, don't mark seen"
+// a CLI: stdout/stderr are its UI; null bytes mean "failed, don't mark seen"
+@SuppressWarnings({"java:S106", "java:S1168"})
 public final class FindMe {
-
-    static final float THRESHOLD = 0.40f; // cosine similarity; raise if too many false matches, lower if it misses you
-    static final Path MODELS = Path.of(System.getenv().getOrDefault("FIND_ME_MODELS",
-            System.getProperty("user.home") + "/.insightface/models/buffalo_l"));
+    // cosine similarity; raise if too many false matches, lower if it misses you
+    static final float THRESHOLD = 0.40f;
+    static final Path MODELS = Path.of(System
+        .getenv()
+        .getOrDefault("FIND_ME_MODELS", System.getProperty("user.home") + "/.insightface/models/buffalo_l")
+    );
     private static final String MODELS_URL =
-            "https://github.com/deepinsight/insightface/releases/download/model-zoo/buffalo_l.zip"; // where insightface gets it
+            // where insightface gets it
+    "https://github.com/deepinsight/insightface/releases/download/model-zoo/buffalo_l.zip";
     private static final List<String> MODEL_FILES = List.of("det_10g.onnx", "w600k_r50.onnx");
     private static final Path SEEN = Path.of("seen.txt");
     private static final Path MATCHES = Path.of("matches.txt");
     static final int CPUS = Runtime.getRuntime().availableProcessors();
-    static final int IN_FLIGHT = 64; // photos downloaded but not yet scanned: bounds memory when downloads outrun the GPU
+    // photos downloaded but not yet scanned: bounds memory when downloads outrun the GPU
+    static final int IN_FLIGHT = 64;
     private static final int ATTEMPTS = 4;
     static final String USAGE =
             "usage: find-me [--demo] <reference-photos-dir> <album-url-or-dir> [<album-url-or-dir> ...]";
-
-    private static final HttpClient HTTP = HttpClient.newBuilder()
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .connectTimeout(Duration.ofSeconds(30))
-            .build();
+    private static final HttpClient HTTP = HttpClient
+        .newBuilder()
+        .followRedirects(HttpClient.Redirect.NORMAL)
+        .connectTimeout(Duration.ofSeconds(30))
+        .build();
 
     record Photo(String id, String imageUrl, String page) {}
 
@@ -72,7 +77,8 @@ public final class FindMe {
     }
 
     // gallery-dl's DataJob is what `gallery-dl -j` runs; type 3 entries are files: [3, image_url, metadata]
-    private static final String LIST_ALBUM = """
+    private static final String LIST_ALBUM =
+            """
             from gallery_dl import config, job
             config.set((), "size-max", 1024)
             class Counting(job.DataJob):
@@ -118,7 +124,8 @@ public final class FindMe {
                     albums.add(a);
                 }
             }
-            if (!albums.isEmpty()) { // skips starting Python when there's nothing to list
+            if (!albums.isEmpty()) {
+                // skips starting Python when there's nothing to list
                 listAlbums(albums, seen, found, (a, n, k) -> {});
             }
             List<Photo> todo = new ArrayList<>(found.values());
@@ -129,20 +136,26 @@ public final class FindMe {
 
     /// Fetches insightface's buffalo_l on first use, as insightface does, keeping only the two models this app runs.
     static void ensureModels() throws IOException, InterruptedException {
-        if (MODEL_FILES.stream().allMatch(f -> Files.exists(MODELS.resolve(f)))) {
+        if (MODEL_FILES
+            .stream()
+            .allMatch(f -> Files.exists(MODELS.resolve(f)))) {
             return;
         }
         Files.createDirectories(MODELS);
         Path zip = Files.createTempFile(MODELS, "buffalo_l", ".zip");
         try {
             System.err.println("downloading face models (~290 MB) to " + MODELS);
-            HttpResponse<Path> r = HTTP.send(HttpRequest.newBuilder(URI.create(MODELS_URL)).build(),
-                    HttpResponse.BodyHandlers.ofFile(zip));
+            HttpResponse<Path> r =
+                    HTTP.send(
+                            HttpRequest.newBuilder(URI.create(MODELS_URL)).build(),
+                            HttpResponse.BodyHandlers.ofFile(zip)
+            );
             if (r.statusCode() != 200) {
                 throw new IOException("model download failed: HTTP " + r.statusCode() + " from " + MODELS_URL);
             }
             try (FileSystem fs = FileSystems.newFileSystem(zip)) {
-                for (String f : MODEL_FILES) { // via .part so an interrupted run never leaves a truncated model behind
+                for (String f : MODEL_FILES) {
+                    // via .part so an interrupted run never leaves a truncated model behind
                     Path part = MODELS.resolve(f + ".part");
                     Files.copy(fs.getPath(f), part, StandardCopyOption.REPLACE_EXISTING);
                     Files.move(part, MODELS.resolve(f), StandardCopyOption.ATOMIC_MOVE);
@@ -211,29 +224,36 @@ public final class FindMe {
     /// albums are dropped. Not parallel: only one GraalPy context per process may load native modules (gallery-dl needs
     /// termios), and gallery-dl isn't thread-safe within one interpreter (shared extractor generator and SQLite cache).
     static void listAlbums(List<String> albums, Set<String> seen, Map<String, Photo> todo, AlbumProgress progress)
-            throws IOException, InterruptedException {
+            throws IOException,
+            InterruptedException {
         try (Context py = GraalPyResources.contextBuilder().option("engine.WarnInterpreterOnly", "false").build()) {
             Value list = py.eval("python", LIST_ALBUM);
             for (int n = 0; n < albums.size(); n++) {
                 String url = albums.get(n);
                 progress.albumStarted(n + 1, albums.size());
                 // gallery-dl doesn't support flic.kr short links; use where they redirect
-                String resolved = HTTP.send(HttpRequest.newBuilder(URI.create(url)).build(),
-                        HttpResponse.BodyHandlers.discarding()).uri().toString();
+                String resolved = HTTP
+                    .send(HttpRequest.newBuilder(URI.create(url)).build(), HttpResponse.BodyHandlers.discarding())
+                    .uri()
+                    .toString();
                 int album = n + 1;
                 int[] listed = {0};
                 Value found = list.execute(resolved, (ProxyExecutable) _ -> {
                     progress.photo(album, albums.size(), ++listed[0]);
                     return null;
                 });
-                System.err.println("listed album " + (n + 1) + "/" + albums.size() + ": " + url
-                        + " (" + found.getArraySize() + " photos)");
+                System.err.println(
+                        "listed album " + (n + 1) + "/" + albums.size() + ": " + url + " (" + found.getArraySize() + " photos)"
+                );
                 List<Photo> added = new ArrayList<>();
                 for (long i = 0; i < found.getArraySize(); i++) {
                     Value t = found.getArrayElement(i);
                     String id = t.getArrayElement(1).asString();
-                    Photo p = new Photo(id, t.getArrayElement(0).asString(),
-                            "https://www.flickr.com/photos/" + t.getArrayElement(2).asString() + "/" + id);
+                    Photo p = new Photo(
+                            id,
+                            t.getArrayElement(0).asString(),
+                            "https://www.flickr.com/photos/" + t.getArrayElement(2).asString() + "/" + id
+                    );
                     if (!seen.contains(id) && todo.putIfAbsent(id, p) == null) {
                         added.add(p);
                     }
@@ -247,27 +267,37 @@ public final class FindMe {
     static void listDir(Path dir, Set<String> seen, Map<String, Photo> todo) throws IOException {
         int before = todo.size();
         try (var s = Files.walk(dir)) {
-            s.filter(Files::isRegularFile)
-                    .filter(f -> f.getFileName().toString().toLowerCase(Locale.ROOT)
-                            .matches(".*\\.(jpe?g|png|webp|bmp|tiff?)"))
-                    .map(f -> f.toAbsolutePath().normalize())
-                    .sorted()
-                    .filter(f -> !seen.contains(f.toString()))
-                    .forEach(f -> todo.putIfAbsent(f.toString(), new Photo(f.toString(), f.toUri().toString(), f.toString())));
+            s
+                .filter(Files::isRegularFile)
+                .filter(f -> f
+                    .getFileName()
+                    .toString()
+                    .toLowerCase(Locale.ROOT)
+                    .matches(".*\\.(jpe?g|png|webp|bmp|tiff?)"))
+                .map(f -> f.toAbsolutePath().normalize())
+                .sorted()
+                .filter(f -> !seen.contains(f.toString()))
+                .forEach(f -> todo.putIfAbsent(
+                        f.toString(),
+                        new Photo(f.toString(), f.toUri().toString(), f.toString())
+                ));
         }
         System.err.println("listed folder " + dir + " (" + (todo.size() - before) + " new photos)");
     }
 
     private static void scan(Faces faces, float[] me, List<Photo> todo) throws IOException, InterruptedException {
         Semaphore inFlight = new Semaphore(IN_FLIGHT);
-        Semaphore cpus = new Semaphore(CPUS); // caps concurrent decode+inference at the CPU count
+        // caps concurrent decode+inference at the CPU count
+        Semaphore cpus = new Semaphore(CPUS);
         AtomicInteger checked = new AtomicInteger();
         try (Writer seenOut = Files.newBufferedWriter(SEEN, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
                 Writer matchOut = Files.newBufferedWriter(MATCHES, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-                var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+                var pool = Executors.newVirtualThreadPerTaskExecutor()
+        ) {
             for (Photo p : todo) {
                 inFlight.acquire();
-                pool.execute(() -> { // execute, not submit: a failure prints instead of vanishing into an unread Future
+                pool.execute(() -> {
+                    // execute, not submit: a failure prints instead of vanishing into an unread Future
                     try {
                         if (check(faces, cpus, me, p, seenOut, matchOut)) {
                             int n = checked.incrementAndGet();
@@ -301,7 +331,8 @@ public final class FindMe {
             if (score >= THRESHOLD) {
                 String line = String.format(Locale.ROOT, "MATCH %.2f %s", score, p.page());
                 //noinspection JavaPrintToLogpoint
-                System.out.println(line); // the CLI's output: MATCH lines go to stdout
+                // the CLI's output: MATCH lines go to stdout
+                System.out.println(line);
                 matchOut.write(line + "\n");
                 matchOut.flush();
             }
@@ -355,7 +386,8 @@ public final class FindMe {
                     return r.body();
                 }
                 error = "HTTP " + r.statusCode();
-                retry = r.statusCode() == 429 || r.statusCode() >= 500; // client error: retrying won't help
+                // client error: retrying won't help
+                retry = r.statusCode() == 429 || r.statusCode() >= 500;
             } catch (IOException e) {
                 error = e.toString();
             } catch (InterruptedException _) {
@@ -368,7 +400,8 @@ public final class FindMe {
             }
             try {
                 //noinspection BusyWait
-                Thread.sleep(1000L << attempt); // retry backoff: 2s, 4s, 8s
+                // retry backoff: 2s, 4s, 8s
+                Thread.sleep(1000L << attempt);
             } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
                 return null;

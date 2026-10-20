@@ -20,9 +20,9 @@ import org.jspecify.annotations.Nullable;
 
 /// Java2D drawing of the photos on their cards: face boxes, landmark mesh, score tags, the ✓/✗ mark, the match stamp,
 /// and the gallery tiles, at the demo's phone-readable sizes (design pixels at 1080×960).
-@SuppressWarnings("java:S3358") // nested ternaries read fine here
+// nested ternaries read fine here
+@SuppressWarnings("java:S3358")
 final class PhotoPainter {
-
     static final int RADIUS = 12, STROKE = 6, TAG_FONT = 44, TAG_H = 52, TAG_PAD = 8, VERDICT = 180;
     private static final int[] GLOW = {8, 14, 20};
     private static final float[] GLOW_ALPHA = {.35f, .20f, .10f};
@@ -30,10 +30,13 @@ final class PhotoPainter {
     private static final float LOCK_FROM = .5f;
     /// The 5 landmarks are left eye, right eye, nose, left and right mouth corner; these pairs draw the face mesh.
     private static final int[][] MESH = {{0, 1}, {0, 2}, {1, 2}, {2, 3}, {2, 4}, {3, 4}};
-    private static final Color MESH_LINE = new Color(253, 224, 71, 153); // landmarks at 60%
-    private static final Color STAMP_BG = new Color(15, 23, 42, 191); // background at 75%
+    // landmarks at 60%
+    private static final Color MESH_LINE = new Color(253, 224, 71, 153);
+    // background at 75%
+    private static final Color STAMP_BG = new Color(15, 23, 42, 191);
 
-    private PhotoPainter() {}
+    private PhotoPainter() {
+    }
 
     /// The scan's photo, fit to `area`, `progress` (0..1) into its animation: a match locks on and gets the stamp, a
     /// miss gets the ✗ corner mark.
@@ -92,7 +95,8 @@ final class PhotoPainter {
         Graphics2D s = (Graphics2D) g.create();
         s.translate(area.getCenterX(), area.y + area.height * .74);
         s.rotate(Math.toRadians(-6));
-        s.scale(1 + .6 * (1 - e), 1 + .6 * (1 - e)); // slams down from larger
+        // slams down from larger
+        s.scale(1 + .6 * (1 - e), 1 + .6 * (1 - e));
         s.setComposite(AlphaComposite.SrcOver.derive(e));
         Rectangle box = new Rectangle(-w / 2 - 8, -h / 2 - 8, w + 16, h + 16);
         s.setColor(STAMP_BG);
@@ -130,7 +134,8 @@ final class PhotoPainter {
 
     static float ease(float t) {
         float u = 1 - t;
-        return 1 - u * u * u; // ease-out cubic
+        // ease-out cubic
+        return 1 - u * u * u;
     }
 
     /// Draws `s` with its cap height centered on `cy` and its middle on `cx`.
@@ -167,24 +172,47 @@ final class PhotoPainter {
         return best;
     }
 
-    private static void paint(Graphics2D g, Rectangle area, Shot shot, Rectangle2D.Double at, float lockOn,
-            boolean learning, boolean tile) {
-        antialias(g); // also for the ✓/✗ and the stamp drawn after
+    private static void paint(
+            Graphics2D g,
+            Rectangle area,
+            Shot shot,
+            Rectangle2D.Double at,
+            float lockOn,
+            boolean learning,
+            boolean tile
+    ) {
+        // also for the ✓/✗ and the stamp drawn after
+        antialias(g);
         Graphics2D p = (Graphics2D) g.create();
         p.clip(rounded(area));
-        p.drawImage(shot.image(), (int) Math.round(at.x), (int) Math.round(at.y), (int) Math.round(at.width),
-                (int) Math.round(at.height), null);
+        p.drawImage(
+                shot.image(),
+                (int) Math.round(at.x),
+                (int) Math.round(at.y),
+                (int) Math.round(at.width),
+                (int) Math.round(at.height),
+                null
+        );
         double k = at.width / shot.image().getWidth();
         Box best = best(shot);
-        List<Box> boxes = shot.boxes().stream()
-                .filter(b -> !tile || b.similarity() >= FindMe.THRESHOLD).toList();
+        List<Box> boxes = shot
+            .boxes()
+            .stream()
+            .filter(b -> !tile || b.similarity() >= FindMe.THRESHOLD)
+            .toList();
         float grow = LOCK_FROM * (1 - ease(lockOn));
         for (Box b : boxes) {
             boolean match = b.similarity() >= FindMe.THRESHOLD;
             Color c = learning ? Theme.SCANNING : match ? Theme.MATCH : Theme.NO_MATCH;
             Rectangle2D.Double r = rect(b, at, k, match && !learning ? grow : 0);
-            Shape outline = new RoundRectangle2D.Double(r.x - STROKE / 2.0, r.y - STROKE / 2.0, r.width + STROKE,
-                    r.height + STROKE, 6, 6);
+            Shape outline = new RoundRectangle2D.Double(
+                    r.x - STROKE / 2.0,
+                    r.y - STROKE / 2.0,
+                    r.width + STROKE,
+                    r.height + STROKE,
+                    6,
+                    6
+            );
             if (match && !learning) {
                 for (int i = GLOW.length - 1; i >= 0; i--) {
                     p.setComposite(AlphaComposite.SrcOver.derive(GLOW_ALPHA[i] * ease(lockOn)));
@@ -199,7 +227,8 @@ final class PhotoPainter {
             p.draw(outline);
             mesh(p, b.landmarks(), at, k, (b.x2() - b.x1()) * k);
         }
-        if (!learning) { // tags last, so no box draws over another face's score
+        if (!learning) {
+            // tags last, so no box draws over another face's score
             Font f = Theme.bold(TAG_FONT);
             p.setFont(f);
             for (Box b : boxes) {
@@ -214,7 +243,8 @@ final class PhotoPainter {
                 //noinspection MathClampMigration
                 double tx = Math.max(area.x, Math.min(r.x - STROKE, area.getMaxX() - tw)), ty = r.y - STROKE - TAG_H;
                 if (ty < area.y) {
-                    ty = r.y; // no room above the box: inside its top edge instead of cut off
+                    // no room above the box: inside its top edge instead of cut off
+                    ty = r.y;
                 }
                 p.setColor(match ? Theme.MATCH : Theme.NO_MATCH);
                 p.fill(new Rectangle2D.Double(tx, ty, tw, TAG_H));

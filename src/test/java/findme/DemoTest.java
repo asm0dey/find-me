@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -15,7 +14,6 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 class DemoTest {
-
     private final List<DemoState> published = new CopyOnWriteArrayList<>();
     private final Demo.Screen screen = new Demo.Screen(published::add, System.nanoTime());
     private final LinkedBlockingQueue<List<FindMe.Photo>> listed = new LinkedBlockingQueue<>();
@@ -61,8 +59,15 @@ class DemoTest {
     @Test
     void theListersFailureIsTheDirectors() {
         var listing = lister(List.of(List.of(photo(1))), new IOException("album folder not found: /nope"));
-        var e = assertThrows(ExecutionException.class, () -> Demo.scan(_ -> new Pacer.Failed(), new float[] {1, 0},
-                listed, listing, List.of(), screen, System.nanoTime()));
+        var e = assertThrows(ExecutionException.class, () -> Demo.scan(
+                _ -> new Pacer.Failed(),
+                new float[] {1, 0},
+                listed,
+                listing,
+                List.of(),
+                screen,
+                System.nanoTime()
+        ));
         assertEquals("album folder not found: /nope", assertInstanceOf(IOException.class, e.getCause()).getMessage());
         assertTrue(published.stream().noneMatch(Done.class::isInstance));
     }

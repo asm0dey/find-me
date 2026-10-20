@@ -15,10 +15,15 @@ final class SproutsLambdaTypes {
     @SuppressWarnings("unchecked")
     static <T> Class<T> expectedClassFromItem(T item) {
         Class<?> type = item.getClass();
-        if (type.isHidden() && type.getInterfaces().length > 0) return (Class<T>) type.getInterfaces()[0];
+        if (type.isHidden() && type.getInterfaces().length > 0) {
+            return (Class<T>) type.getInterfaces()[0];
+        }
         // as the original: an enum constant with a body is an anonymous subclass of its enum
-        if (Enum.class.isAssignableFrom(type) && type.getSuperclass() != null && !type.getSuperclass().equals(Enum.class))
+        if (Enum.class.isAssignableFrom(type)
+                && type.getSuperclass() != null
+                && !type.getSuperclass().equals(Enum.class)) {
             return (Class<T>) type.getSuperclass();
+        }
         return (Class<T>) type;
     }
 }

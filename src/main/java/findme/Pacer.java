@@ -20,16 +20,18 @@ import org.jspecify.annotations.Nullable;
 /// The pace fits the rest of the photos into the time left before a deadline ([#pace]), and the display never runs
 /// ahead of the pipeline: with nothing queued it waits for the next photo.
 final class Pacer {
-
     /// What the pipeline hands over per photo, in completion order.
-    sealed interface Result permits Scored, Failed {}
+    sealed interface Result permits Scored, Failed {
+    }
 
     /// A fetched, decoded photo: its original bytes, every detected face, and the best similarity (0 with no faces).
     record Scored(byte[] bytes, List<Faces.Face> faces, float best) implements Result {
         @Override
         public boolean equals(@Nullable Object o) {
             return o instanceof Scored(byte[] obytes, List<Faces.Face> ofaces, float obest)
-                    && Arrays.equals(bytes, obytes) && faces.equals(ofaces) && Float.compare(best, obest) == 0;
+                    && Arrays.equals(bytes, obytes)
+                    && faces.equals(ofaces)
+                    && Float.compare(best, obest) == 0;
         }
 
         @Override
@@ -55,7 +57,6 @@ final class Pacer {
 
     private static final int DISPLAY_SIDE = 1080;
     private static final long POLL_MS = 50;
-
     private final BlockingQueue<Result> queue;
     private final List<BufferedImage> crops;
     private final float[] me;
@@ -67,8 +68,14 @@ final class Pacer {
     private volatile boolean pipelineFinished;
 
     /// `deadlineNanos` is the System.nanoTime() by which the last photo should have been shown.
-    Pacer(BlockingQueue<Result> queue, List<BufferedImage> crops, float[] me, Consumer<DemoState> publish,
-            Sleeper sleeper, long deadlineNanos) {
+    Pacer(
+            BlockingQueue<Result> queue,
+            List<BufferedImage> crops,
+            float[] me,
+            Consumer<DemoState> publish,
+            Sleeper sleeper,
+            long deadlineNanos
+    ) {
         this.queue = queue;
         this.crops = List.copyOf(crops);
         this.me = me;
@@ -102,10 +109,12 @@ final class Pacer {
         long matchMs = (long) matchesLeft * Theme.MATCH_MS > remainingMs / 2
                 ? Math.max(Theme.MIN_MATCH_MS, remainingMs / 2 / matchesLeft)
                 : Theme.MATCH_MS;
-        long missMs = missesLeft <= 0 ? Theme.MISS_MS
+        long missMs = missesLeft <= 0
+                ? Theme.MISS_MS
                 : Math.clamp((remainingMs - matchesLeft * matchMs) / missesLeft, Theme.MIN_MISS_MS, Theme.MISS_MS);
         long fit = matchesLeft == 0 ? matchMs : (remainingMs - (long) Math.max(0, missesLeft) * missMs) / matchesLeft;
-        if (missMs == Theme.MIN_MISS_MS && fit < matchMs) { // misses can't go faster: matches give up the rest
+        if (missMs == Theme.MIN_MISS_MS && fit < matchMs) {
+            // misses can't go faster: matches give up the rest
             matchMs = Math.max(Theme.MIN_MATCH_MS, fit);
         }
         return new Pace(missMs, matchMs);
@@ -128,10 +137,12 @@ final class Pacer {
         List<Shot> matches = new ArrayList<>();
         Shot current = null;
         int shown = 0;
-        while (!listingFinished || shown < total.get()) { // listingFinished first: once it's set, total is final
+        while (!listingFinished || shown < total.get()) {
+            // listingFinished first: once it's set, total is final
             Result r = queue.poll(POLL_MS, TimeUnit.MILLISECONDS);
             if (r == null) {
-                continue; // nothing scanned yet: wait rather than run ahead of the pipeline
+                // nothing scanned yet: wait rather than run ahead of the pipeline
+                continue;
             }
             long start = System.nanoTime();
             shown++;
@@ -147,7 +158,8 @@ final class Pacer {
             // a failure republishes the previous shot itself, so the view doesn't replay it
             publish.accept(new Scanning(crops, shown, known, matches.size(), slowedDown, current, totalFinal));
             long hold = holdMs(r, pace(r, shown, known, totalFinal, matches.size()));
-            long left = hold - TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start); // decoding counts too
+            // decoding counts too
+            long left = hold - TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
             if (left > 0) {
                 sleeper.sleep(left);
             }
@@ -168,10 +180,14 @@ final class Pacer {
         }
         int scanned = shown + queued;
         long unscanned = Math.max(0, known - scanned);
-        int matchesLeft = (isMatch(r) ? 1 : 0) + queuedMatches
+        int matchesLeft = (isMatch(r) ? 1 : 0)
+                + queuedMatches
                 + (int) Math.round((double) (matchesShown + queuedMatches) / scanned * unscanned);
-        Pace p = pace(TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime()), known - shown + 1 - matchesLeft,
-                matchesLeft);
+        Pace p = pace(
+                TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime()),
+                known - shown + 1 - matchesLeft,
+                matchesLeft
+        );
         return totalFinal ? p : new Pace(Theme.MIN_MISS_MS, p.matchMs());
     }
 
@@ -179,7 +195,8 @@ final class Pacer {
         try (var _ = new PointerScope()) {
             return shot(Faces.decode(s.bytes()), s.faces(), me, s.best());
         } catch (IOException e) {
-            throw new IllegalStateException("decoded in the pipeline, but not for display", e); // same bytes, same decoder
+            // same bytes, same decoder
+            throw new IllegalStateException("decoded in the pipeline, but not for display", e);
         }
     }
 

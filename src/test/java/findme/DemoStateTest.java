@@ -4,14 +4,14 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 class DemoStateTest {
-    @Test void gridFollowsMatchCount() {
+    @Test
+    void gridFollowsMatchCount() {
         assertEquals(new Grid(1, 1, 1, 0), DemoState.grid(1));
         assertEquals(new Grid(2, 1, 2, 0), DemoState.grid(2));
         assertEquals(new Grid(2, 2, 3, 0), DemoState.grid(3));
@@ -24,20 +24,27 @@ class DemoStateTest {
 
     private static Shot match() {
         float[] lm = {20, 20, 40, 20, 30, 30, 22, 40, 38, 40};
-        return new Shot(new BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB), List.of(new Box(0, 0, 50, 50, lm, .8f)), .8f);
+        return new Shot(
+                new BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB),
+                List.of(new Box(0, 0, 50, 50, lm, .8f)),
+                .8f
+        );
     }
 
     /// The view animates each new shot and treats an equal one as a republish: no replay.
-    @Test void aShotIsNewByItsPhotoAndTheSameWhenRepublished() {
+    @Test
+    void aShotIsNewByItsPhotoAndTheSameWhenRepublished() {
         Shot shot = match();
         Shot other = new Shot(new BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB), shot.boxes(), shot.best());
-        assertNotEquals(shot, other); // same faces, another photo
+        // same faces, another photo
+        assertNotEquals(shot, other);
         assertEquals(shot, new Shot(shot.image(), shot.boxes(), shot.best()));
     }
 
     /// The scan screen is built on its first state and takes that state's photo as already shown; a first photo that
     /// matches must still lock on, so the screen first gets the same state without it.
-    @Test void theScanOpensWithoutAPhotoSoTheFirstOneAnimates() {
+    @Test
+    void theScanOpensWithoutAPhotoSoTheFirstOneAnimates() {
         List<DemoState> published = new ArrayList<>();
         Demo.Screen screen = new Demo.Screen(published::add, 0);
         Scanning first = new Scanning(List.of(), 1, 13, 1, false, match(), false);

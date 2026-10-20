@@ -231,6 +231,29 @@
                 <version>3.6.0</version>
             </plugin>
             <plugin>
+                <!-- `mvn spotless:apply` formats; `verify` fails on unformatted code -->
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>3.10.4</version>
+                <configuration>
+                    <java>
+                        <princeOfSpace>
+                            <version>2.2.0</version>
+                            <lineLength>120</lineLength>
+                            <javaLanguageLevel>25</javaLanguageLevel>
+                        </princeOfSpace>
+                        <removeUnusedImports/>
+                        <formatAnnotations/>
+                    </java>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals><goal>check</goal></goals>
+                        <phase>verify</phase>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <!-- pip-installs gallery-dl into the jar's virtual filesystem at build time -->
                 <groupId>org.graalvm.python</groupId>
                 <artifactId>graalpy-maven-plugin</artifactId>

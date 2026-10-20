@@ -2,7 +2,6 @@ package findme;
 
 import static org.bytedeco.opencv.global.opencv_core.CV_8UC3;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -13,7 +12,6 @@ import org.bytedeco.opencv.opencv_core.Scalar;
 import org.junit.jupiter.api.Test;
 
 class FacesTest {
-
     @Test
     void alignedCropAtTemplatePointsIsAScaledCopy() {
         // landmarks exactly at the 112-px template on a 112x112 image -> the 448 crop is that image scaled x4
@@ -28,7 +26,8 @@ class FacesTest {
         Mat crop = Faces.alignedCrop(img, Faces.templateFor(112), 448);
         assertEquals(448, crop.cols());
         assertEquals(448, crop.rows());
-        assertEquals(2 * 50, crop.ptr(200, 200).get(0) & 0xFF, 2); // x=200 in crop -> x=50 in source
+        // x=200 in crop -> x=50 in source
+        assertEquals(2 * 50, crop.ptr(200, 200).get(0) & 0xFF, 2);
     }
 
     @Test

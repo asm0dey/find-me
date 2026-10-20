@@ -34,21 +34,23 @@ import swingtree.UI;
 /// which takes each album's photos as soon as the album is listed. The director thread learns and feeds the scan, the
 /// pacer shows its results; together they publish an immutable [DemoState] at every step, which the window
 /// ([DemoView]) renders.
-@SuppressWarnings("java:S106") // stderr for what the window can't show: a failed decode or listing tick
+// stderr for what the window can't show: a failed decode or listing tick
+@SuppressWarnings("java:S106")
 final class Demo {
-
     private static final int CROP_SIDE = 448;
     private static final long TICK_MS = 100;
     /// Ends the listed albums on the lister → director queue; compared by identity.
     static final List<FindMe.Photo> END = new ArrayList<>();
 
-    private Demo() {}
+    private Demo() {
+    }
 
     /// `args` are the CLI's: reference folder, then albums and folders. Done and Failed stay on screen; closing the
     /// window exits, 0 after Done and 1 otherwise (also ending a pacer, lister or director still running).
     static void run(String[] args) {
         long launch = System.nanoTime();
-        System.setProperty("sun.java2d.uiScale", "1"); // 1080×960 device pixels, whatever the desktop's scale
+        // 1080×960 device pixels, whatever the desktop's scale
+        System.setProperty("sun.java2d.uiScale", "1");
         if (args.length < 2) {
             System.err.println(FindMe.USAGE);
             System.exit(1);
@@ -68,7 +70,10 @@ final class Demo {
         });
         // the EDT only ever reads these immutable values, set in publish order
         Screen screen = new Screen(s -> UI.runLater(() -> state.set(s)), launch);
-        Thread.ofPlatform().name("director").start(() -> direct(args, screen, launch + TimeUnit.MILLISECONDS.toNanos(Theme.RUN_MS)));
+        Thread
+            .ofPlatform()
+            .name("director")
+            .start(() -> direct(args, screen, launch + TimeUnit.MILLISECONDS.toNanos(Theme.RUN_MS)));
     }
 
     /// Composes the screen from learning and listing, which run at once, until the pacer takes over; Done or Failed
@@ -120,8 +125,15 @@ final class Demo {
 
         synchronized void scanning(DemoState s) {
             if (!over) {
-                if (!scanning && s instanceof Scanning(var crops, var shown, var total, var found, var slowedDown, var current,
-                        var totalFinal) && current != null) {
+                if (!scanning && s instanceof Scanning(
+                        var crops,
+                        var shown,
+                        var total,
+                        var found,
+                        var slowedDown,
+                        var current,
+                        var totalFinal
+                ) && current != null) {
                     // the scan screen takes its first state as settled; built on no photo, it animates the first one
                     publish.accept(new Scanning(crops, shown, total, found, slowedDown, null, totalFinal));
                 }
@@ -142,12 +154,28 @@ final class Demo {
                 return;
             }
             if (learned) {
-                publish.accept(new Listing(learning.crops(), listingFinished ? albums : album, albums, listed,
-                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start)));
+                publish.accept(
+                        new Listing(
+                                learning.crops(),
+                                listingFinished ? albums : album,
+                                albums,
+                                listed,
+                                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start)
+                        )
+                );
             } else {
                 Learning l = learning;
-                publish.accept(new Learning(l.crops(), l.done(), l.total(), l.current(), listed,
-                        listingFinished ? 0 : album, albums));
+                publish.accept(
+                        new Learning(
+                                l.crops(),
+                                l.done(),
+                                l.total(),
+                                l.current(),
+                                listed,
+                                listingFinished ? 0 : album,
+                                albums
+                        )
+                );
             }
         }
     }
@@ -155,7 +183,8 @@ final class Demo {
     private static void direct(String[] args, Screen screen, long deadline) {
         try (var ticker = Executors.newSingleThreadScheduledExecutor()) {
             ticker.scheduleAtFixedRate(() -> {
-                try { // a throw would silently cancel scheduleAtFixedRate
+                try {
+                    // a throw would silently cancel scheduleAtFixedRate
                     screen.tick();
                 } catch (RuntimeException e) {
                     System.err.println("screen tick failed: " + e);
@@ -186,19 +215,22 @@ final class Demo {
                     scan(p -> check(faces, cpus, me, p), me, listed, listing, crops, screen, deadline);
                 }
             } finally {
-                listing.cancel(true); // a no-op once listed; after a failure, stops the lister where it can be stopped
+                // a no-op once listed; after a failure, stops the lister where it can be stopped
+                listing.cancel(true);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             screen.end(new Failed("interrupted"));
-        } catch (Throwable e) { // whatever went wrong, even an Error, the view must hear about it
+        } catch (Throwable e) {
+            // whatever went wrong, even an Error, the view must hear about it
             Throwable t = e instanceof ExecutionException && e.getCause() != null ? e.getCause() : e;
             screen.end(new Failed(t.getMessage() != null ? t.getMessage() : t.toString()));
         }
     }
 
     /// Averaged embedding of the reference photos with exactly one face, as the CLI does; null if there are none.
-    private static float @Nullable [] learn(Faces faces, Path dir, List<BufferedImage> crops, Screen screen) throws IOException {
+    private static float @Nullable [] learn(Faces faces, Path dir, List<BufferedImage> crops, Screen screen)
+            throws IOException {
         if (!Files.isDirectory(dir)) {
             throw new IOException("reference folder not found: " + dir);
         }
@@ -219,8 +251,9 @@ final class Demo {
                 crops.add(Faces.toImage(Faces.alignedCrop(img, f.landmarks(), CROP_SIDE), CROP_SIDE));
                 // similarity to itself: a reference face is you by definition, and Learning shows no verdict;
                 // the listing fields are the Screen's to fill
-                screen.learning(new Learning(crops, i + 1, files.size(), Pacer.shot(img, found, f.embedding(), 1),
-                        0, 0, 0));
+                screen.learning(
+                        new Learning(crops, i + 1, files.size(), Pacer.shot(img, found, f.embedding(), 1), 0, 0, 0)
+                );
             } catch (IOException _) {
                 // not an image: skipped, as the CLI does
             }
@@ -231,13 +264,15 @@ final class Demo {
     /// Lists every folder, then every album, like the CLI but against an empty seen set (the demo always rescans
     /// everything), putting each one's new photos on `listed` as soon as it is listed.
     private static void list(List<String> sources, Screen screen, BlockingQueue<List<FindMe.Photo>> listed)
-            throws IOException, InterruptedException {
+            throws IOException,
+            InterruptedException {
         Map<String, FindMe.Photo> found = new LinkedHashMap<>();
         List<String> albums = new ArrayList<>();
         List<String> dirs = new ArrayList<>();
         for (String a : sources) {
             boolean dir = Files.isDirectory(Path.of(a));
-            if (!dir && !a.contains("://")) { // not an album URL either: a folder that isn't there
+            if (!dir && !a.contains("://")) {
+                // not an album URL either: a folder that isn't there
                 throw new IOException("album folder not found: " + a);
             }
             (dir ? dirs : albums).add(a);
@@ -248,7 +283,8 @@ final class Demo {
             listed.add(List.copyOf(new ArrayList<>(found.values()).subList(before, found.size())));
             screen.listing(0, albums.size(), found.size());
         }
-        if (!albums.isEmpty()) { // skips starting Python when there's nothing to list
+        if (!albums.isEmpty()) {
+            // skips starting Python when there's nothing to list
             // runs inside gallery-dl's job, on this thread: only update counters, queue and publish, never throw
             FindMe.listAlbums(albums, new HashSet<>(), found, new FindMe.AlbumProgress() {
                 @Override
@@ -273,7 +309,8 @@ final class Demo {
                 public void albumListed(int album, int n, List<FindMe.Photo> photos) {
                     try {
                         listed.add(photos);
-                        screen.listing(album, n, found.size()); // after dedup across albums
+                        // after dedup across albums
+                        screen.listing(album, n, found.size());
                     } catch (RuntimeException e) {
                         System.err.println("listing progress failed: " + e);
                     }
@@ -285,10 +322,17 @@ final class Demo {
 
     /// The CLI's scan, minus seen.txt and matches.txt, fed album by album as `listed` delivers them: every result goes
     /// on the queue, and the pacer shows it. `check` fetches and scores one photo.
-    static void scan(Function<FindMe.Photo, Pacer.Result> check, float[] me, BlockingQueue<List<FindMe.Photo>> listed,
-            FutureTask<@Nullable Void> listing, List<BufferedImage> crops, Screen screen, long deadline)
-            throws InterruptedException, ExecutionException {
-        var queue = new LinkedBlockingQueue<Pacer.Result>(); // unbounded: the pipeline never waits for the display
+    static void scan(
+            Function<FindMe.Photo, Pacer.Result> check,
+            float[] me,
+            BlockingQueue<List<FindMe.Photo>> listed,
+            FutureTask<@Nullable Void> listing,
+            List<BufferedImage> crops,
+            Screen screen,
+            long deadline
+    ) throws InterruptedException, ExecutionException {
+        // unbounded: the pipeline never waits for the display
+        var queue = new LinkedBlockingQueue<Pacer.Result>();
         Pacer pacer = new Pacer(queue, crops, me, screen::scanning, Thread::sleep, deadline);
         var pacing = new FutureTask<>(pacer::run);
         Thread.ofPlatform().name("pacer").start(pacing);
@@ -302,14 +346,15 @@ final class Demo {
                 while (!ended || !pending.isEmpty()) {
                     // count every album as soon as it's listed, not when the in-flight cap lets it in: the pace needs
                     // the real total
-                    for (var album = pending.isEmpty() ? listed.take() : listed.poll(); album != null && !ended;
-                            album = listed.poll()) {
+                    for (var album = pending.isEmpty() ? listed.take() : listed.poll(); album != null && !ended; album = listed.poll()) {
                         if (album == END) {
                             ended = true;
-                            listing.get(); // the lister's failure, if any, is the director's
+                            // the lister's failure, if any, is the director's
+                            listing.get();
                             pacer.listingFinished();
                         } else {
-                            pacer.add(album.size()); // before any of their results can reach the queue
+                            // before any of their results can reach the queue
+                            pacer.add(album.size());
                             total += album.size();
                             pending.addAll(album);
                         }
@@ -321,7 +366,8 @@ final class Demo {
                     inFlight.acquire();
                     pool.execute(() -> {
                         firstStart.compareAndSet(0, System.nanoTime());
-                        Pacer.Result r = new Pacer.Failed(); // even if check throws, the pacer gets its total
+                        // even if check throws, the pacer gets its total
+                        Pacer.Result r = new Pacer.Failed();
                         try {
                             r = check.apply(p);
                         } finally {
@@ -335,7 +381,8 @@ final class Demo {
             pacer.pipelineFinished();
             screen.end(new Done(crops, total, pacing.get(), realScanMs));
         } finally {
-            pacing.cancel(true); // a no-op once shown; after a failure, the pacer stops polling
+            // a no-op once shown; after a failure, the pacer stops polling
+            pacing.cancel(true);
         }
     }
 
@@ -352,7 +399,8 @@ final class Demo {
         }
         try (var _ = new PointerScope()) {
             List<Faces.Face> found = faces.faces(Faces.decode(bytes));
-            float best = 0; // as the CLI: 0 with no faces
+            // as the CLI: 0 with no faces
+            float best = 0;
             for (Faces.Face f : found) {
                 best = Math.max(best, Faces.similarity(f.embedding(), me));
             }

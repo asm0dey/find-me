@@ -20,7 +20,6 @@ import static org.bytedeco.opencv.global.opencv_imgcodecs.imdecode;
 import static org.bytedeco.opencv.global.opencv_imgproc.INTER_AREA;
 import static org.bytedeco.opencv.global.opencv_imgproc.resize;
 import static org.bytedeco.opencv.global.opencv_imgproc.warpAffine;
-
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.io.IOException;
@@ -56,9 +55,9 @@ import org.bytedeco.opencv.opencv_core.Size;
 /// - Alignment: [utils/face_align.py](https://github.com/deepinsight/insightface/blob/master/python-package/insightface/utils/face_align.py)
 ///
 /// Thread-safe: ONNX Runtime sessions allow concurrent runs.
-@SuppressWarnings("java:S106") // a CLI: stderr is its UI
+// a CLI: stderr is its UI
+@SuppressWarnings("java:S106")
 final class Faces implements AutoCloseable {
-
     private static final int DET_SIZE = 640;
     private static final int REC_SIZE = 112;
     private static final float DET_THRESH = 0.5f;
@@ -67,17 +66,19 @@ final class Faces implements AutoCloseable {
     private static final int ANCHORS = 2;
     // Where the 5 landmarks must land in the 112x112 crop ArcFace was trained on, as x,y pairs: left eye, right eye,
     // nose tip, left mouth corner, right mouth corner. Copied from arcface_dst in https://github.com/deepinsight/insightface/blob/master/python-package/insightface/utils/face_align.py
-    private static final float[] DST = {
-        38.2946f, 51.6963f, 73.5318f, 51.5014f, 56.0252f, 71.7366f, 41.5493f, 92.3655f, 70.7299f, 92.2041f
-    };
+    private static final float[] DST =
+            {38.2946f, 51.6963f, 73.5318f, 51.5014f, 56.0252f, 71.7366f, 41.5493f, 92.3655f, 70.7299f, 92.2041f};
 
     /// One detected face: box and 5 landmarks (x,y pairs) in source-image pixels, plus its L2-normalized 512-d embedding.
     record Face(float x1, float y1, float x2, float y2, float[] landmarks, float[] embedding) {
         @Override
         public boolean equals(@Nullable Object o) {
             return o instanceof Face(float ox1, float oy1, float ox2, float oy2, float[] olandmarks, float[] oembedding)
-                    && Float.compare(x1, ox1) == 0 && Float.compare(y1, oy1) == 0 && Float.compare(x2, ox2) == 0
-                    && Float.compare(y2, oy2) == 0 && Arrays.equals(landmarks, olandmarks)
+                    && Float.compare(x1, ox1) == 0
+                    && Float.compare(y1, oy1) == 0
+                    && Float.compare(x2, ox2) == 0
+                    && Float.compare(y2, oy2) == 0
+                    && Arrays.equals(landmarks, olandmarks)
                     && Arrays.equals(embedding, oembedding);
         }
 
@@ -88,8 +89,19 @@ final class Faces implements AutoCloseable {
 
         @Override
         public String toString() {
-            return "Face[x1=" + x1 + ", y1=" + y1 + ", x2=" + x2 + ", y2=" + y2 + ", landmarks="
-                    + Arrays.toString(landmarks) + ", embedding=" + Arrays.toString(embedding) + "]";
+            return "Face[x1="
+                    + x1
+                    + ", y1="
+                    + y1
+                    + ", x2="
+                    + x2
+                    + ", y2="
+                    + y2
+                    + ", landmarks="
+                    + Arrays.toString(landmarks)
+                    + ", embedding="
+                    + Arrays.toString(embedding)
+                    + "]";
         }
     }
 
@@ -97,8 +109,12 @@ final class Faces implements AutoCloseable {
         @Override
         public boolean equals(@Nullable Object o) {
             return o instanceof Detection(float oscore, float ox1, float oy1, float ox2, float oy2, float[] okps)
-                    && Float.compare(score, oscore) == 0 && Float.compare(x1, ox1) == 0 && Float.compare(y1, oy1) == 0
-                    && Float.compare(x2, ox2) == 0 && Float.compare(y2, oy2) == 0 && Arrays.equals(kps, okps);
+                    && Float.compare(score, oscore) == 0
+                    && Float.compare(x1, ox1) == 0
+                    && Float.compare(y1, oy1) == 0
+                    && Float.compare(x2, ox2) == 0
+                    && Float.compare(y2, oy2) == 0
+                    && Arrays.equals(kps, okps);
         }
 
         @Override
@@ -108,8 +124,19 @@ final class Faces implements AutoCloseable {
 
         @Override
         public String toString() {
-            return "Detection[score=" + score + ", x1=" + x1 + ", y1=" + y1 + ", x2=" + x2 + ", y2=" + y2
-                    + ", kps=" + Arrays.toString(kps) + "]";
+            return "Detection[score="
+                    + score
+                    + ", x1="
+                    + x1
+                    + ", y1="
+                    + y1
+                    + ", x2="
+                    + x2
+                    + ", y2="
+                    + y2
+                    + ", kps="
+                    + Arrays.toString(kps)
+                    + "]";
         }
     }
 
@@ -118,11 +145,17 @@ final class Faces implements AutoCloseable {
     private final Session rec;
     // the GPU runtime for this OS: CoreML (Apple GPU / Neural Engine) on macOS, CUDA elsewhere
     private static final ExecutionProvider GPU = System.getProperty("os.name").startsWith("Mac")
-            ? ExecutionProvider.COREML_EXECUTION_PROVIDER : ExecutionProvider.CUDA_EXECUTION_PROVIDER;
+            ? ExecutionProvider.COREML_EXECUTION_PROVIDER
+            : ExecutionProvider.CUDA_EXECUTION_PROVIDER;
     private boolean onGpu;
 
     Faces(Path modelDir) throws IOException {
-        env = OnnxRuntime.get().getApi().newEnvironment().setLogSeverityLevel(OnnxRuntimeLoggingLevel.WARNING).build();
+        env = OnnxRuntime
+            .get()
+            .getApi()
+            .newEnvironment()
+            .setLogSeverityLevel(OnnxRuntimeLoggingLevel.WARNING)
+            .build();
         det = open(modelDir.resolve("det_10g.onnx"));
         rec = open(modelDir.resolve("w600k_r50.onnx"));
         if (det.getOutputs().size() != 9) {
@@ -136,7 +169,9 @@ final class Faces implements AutoCloseable {
             onGpu = true;
             return s;
         } catch (IOException | RuntimeException e) {
-            System.err.println(GPU + " unavailable for " + model.getFileName() + ", falling back to CPU: " + e.getMessage());
+            System.err.println(
+                    GPU + " unavailable for " + model.getFileName() + ", falling back to CPU: " + e.getMessage()
+            );
             return env.newSession().setPath(model).build();
         }
     }
@@ -196,8 +231,17 @@ final class Faces implements AutoCloseable {
             if (longSide > maxSide) {
                 double f = (double) maxSide / longSide;
                 m = new Mat();
-                resize(bgr, m, new Size(Math.max(1, (int) Math.round(bgr.cols() * f)),
-                        Math.max(1, (int) Math.round(bgr.rows() * f))), 0, 0, INTER_AREA);
+                resize(
+                        bgr,
+                        m,
+                        new Size(
+                                Math.max(1, (int) Math.round(bgr.cols() * f)),
+                                Math.max(1, (int) Math.round(bgr.rows() * f))
+                        ),
+                        0,
+                        0,
+                        INTER_AREA
+                );
             }
             if (!m.isContinuous()) {
                 m = m.clone();
@@ -227,12 +271,16 @@ final class Faces implements AutoCloseable {
         // SCRFD.detect + SCRFD.forward in https://github.com/deepinsight/insightface/blob/master/python-package/insightface/model_zoo/scrfd.py
         Mat padded = new Mat(DET_SIZE, DET_SIZE, CV_8UC3, Scalar.all(0));
         resize(img, padded.apply(new Rect(0, 0, nw, nh)), new Size(nw, nh));
-        Mat blob = blobFromImage(padded, 1 / 128.0, new Size(DET_SIZE, DET_SIZE), Scalar.all(127.5), true, false, CV_32F);
+        Mat blob =
+                blobFromImage(padded, 1 / 128.0, new Size(DET_SIZE, DET_SIZE), Scalar.all(127.5), true, false, CV_32F);
 
         List<Detection> found = new ArrayList<>();
         try (Transaction txn = det.newTransaction().build()) {
-            txn.addInput(0).asTensor(List.of(1L, 3L, (long) DET_SIZE, (long) DET_SIZE)).getFloatBuffer()
-                    .put(blob.createBuffer());
+            txn
+                .addInput(0)
+                .asTensor(List.of(1L, 3L, (long) DET_SIZE, (long) DET_SIZE))
+                .getFloatBuffer()
+                .put(blob.createBuffer());
             for (int i = 0; i < 9; i++) {
                 txn.addOutput(i);
             }
@@ -277,12 +325,16 @@ final class Faces implements AutoCloseable {
                 k[2 * i] = (cx + kps.get(a * 10 + 2 * i) * stride) / scale;
                 k[2 * i + 1] = (cy + kps.get(a * 10 + 2 * i + 1) * stride) / scale;
             }
-            found.add(new Detection(score,
-                    (cx - boxes.get(a * 4) * stride) / scale,
-                    (cy - boxes.get(a * 4 + 1) * stride) / scale,
-                    (cx + boxes.get(a * 4 + 2) * stride) / scale,
-                    (cy + boxes.get(a * 4 + 3) * stride) / scale,
-                    k));
+            found.add(
+                    new Detection(
+                            score,
+                            (cx - boxes.get(a * 4) * stride) / scale,
+                            (cy - boxes.get(a * 4 + 1) * stride) / scale,
+                            (cx + boxes.get(a * 4 + 2) * stride) / scale,
+                            (cy + boxes.get(a * 4 + 3) * stride) / scale,
+                            k
+                    )
+            );
         }
     }
 
@@ -313,11 +365,16 @@ final class Faces implements AutoCloseable {
         List<float[]> result = new ArrayList<>(faces.size());
         for (Detection face : faces) {
             Mat crop = new Mat();
-            warpAffine(img, crop, align(face.kps, DST), new Size(REC_SIZE, REC_SIZE)); // bilinear, black border
-            Mat blob = blobFromImage(crop, 1 / 127.5, new Size(REC_SIZE, REC_SIZE), Scalar.all(127.5), true, false, CV_32F);
+            // bilinear, black border
+            warpAffine(img, crop, align(face.kps, DST), new Size(REC_SIZE, REC_SIZE));
+            Mat blob =
+                    blobFromImage(crop, 1 / 127.5, new Size(REC_SIZE, REC_SIZE), Scalar.all(127.5), true, false, CV_32F);
             try (Transaction txn = rec.newTransaction().build()) {
-                txn.addInput(0).asTensor(List.of(1L, 3L, (long) REC_SIZE, (long) REC_SIZE)).getFloatBuffer()
-                        .put(blob.createBuffer());
+                txn
+                    .addInput(0)
+                    .asTensor(List.of(1L, 3L, (long) REC_SIZE, (long) REC_SIZE))
+                    .getFloatBuffer()
+                    .put(blob.createBuffer());
                 txn.addOutput(0);
                 FloatBuffer out = run(txn).get(0).asTensor().getFloatBuffer();
                 float[] e = new float[out.capacity()];
@@ -367,7 +424,8 @@ final class Faces implements AutoCloseable {
             numB += px * qy - py * qx;
             den += px * px + py * py;
         }
-        double a = numA / den; // dst = [[a,-b],[b,a]] * src + t
+        // dst = [[a,-b],[b,a]] * src + t
+        double a = numA / den;
         double b = numB / den;
         double tx = mdx - (a * msx - b * msy);
         double ty = mdy - (b * msx + a * msy);
@@ -384,7 +442,8 @@ final class Faces implements AutoCloseable {
     }
 
     @Override
-    @SuppressWarnings("deprecation") // the ONNX Runtime API deprecates close() but offers no other way to release the sessions
+    // the ONNX Runtime API deprecates close() but offers no other way to release the sessions
+    @SuppressWarnings("deprecation")
     public void close() {
         det.close();
         rec.close();
