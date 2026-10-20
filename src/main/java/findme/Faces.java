@@ -50,10 +50,13 @@ import org.bytedeco.opencv.opencv_core.Size;
 /// - Alignment: [utils/face_align.py](https://github.com/deepinsight/insightface/blob/master/python-package/insightface/utils/face_align.py)
 ///
 /// Thread-safe: ONNX Runtime sessions allow concurrent runs.
+@SuppressWarnings("java:S106") // a CLI: stderr is its UI
 final class Faces implements AutoCloseable {
 
-    private static final int DET_SIZE = 640, REC_SIZE = 112;
-    private static final float DET_THRESH = 0.5f, NMS_THRESH = 0.4f;
+    private static final int DET_SIZE = 640;
+    private static final int REC_SIZE = 112;
+    private static final float DET_THRESH = 0.5f;
+    private static final float NMS_THRESH = 0.4f;
     private static final int[] STRIDES = {8, 16, 32};
     private static final int ANCHORS = 2;
     // Where the 5 landmarks must land in the 112x112 crop ArcFace was trained on, as x,y pairs: left eye, right eye,
@@ -62,10 +65,12 @@ final class Faces implements AutoCloseable {
         38.2946f, 51.6963f, 73.5318f, 51.5014f, 56.0252f, 71.7366f, 41.5493f, 92.3655f, 70.7299f, 92.2041f
     };
 
+    @SuppressWarnings("java:S6218") // never compared or printed
     private record Detection(float score, float x1, float y1, float x2, float y2, float[] kps) {}
 
     private final Environment env;
-    private final Session det, rec;
+    private final Session det;
+    private final Session rec;
     // the GPU runtime for this OS: CoreML (Apple GPU / Neural Engine) on macOS, CUDA elsewhere
     private static final ExecutionProvider GPU = System.getProperty("os.name").startsWith("Mac")
             ? ExecutionProvider.COREML_EXECUTION_PROVIDER : ExecutionProvider.CUDA_EXECUTION_PROVIDER;
@@ -102,16 +107,18 @@ final class Faces implements AutoCloseable {
 
     /// L2-normalized 512-d embeddings, one per detected face. `img` is BGR, as from [#decode].
     List<float[]> embeddings(Mat img) {
-        try (PointerScope scope = new PointerScope()) {
+        try (var _ = new PointerScope()) {
             List<Detection> faces = detect(img);
             return faces.isEmpty() ? List.of() : embed(img, faces);
         }
     }
 
     private List<Detection> detect(Mat img) {
-        int w = img.cols(), h = img.rows();
+        int w = img.cols();
+        int h = img.rows();
         double ratio = (double) h / w;
-        int nw, nh;
+        int nw;
+        int nh;
         if (ratio > 1.0) {
             nh = DET_SIZE;
             nw = (int) (DET_SIZE / ratio);
@@ -154,7 +161,8 @@ final class Faces implements AutoCloseable {
     /// SCRFD outputs: `0..2` scores, `3..5` box distances, `6..8` landmark offsets, per stride 8/16/32.
     /// Port of SCRFD.forward, distance2bbox and distance2kps in [scrfd.py](https://github.com/deepinsight/insightface/blob/master/python-package/insightface/model_zoo/scrfd.py).
     private static void decode(NamedCollection<OnnxValue> out, int s, float scale, List<Detection> found) {
-        int stride = STRIDES[s], cells = DET_SIZE / stride;
+        int stride = STRIDES[s];
+        int cells = DET_SIZE / stride;
         FloatBuffer scores = out.get(s).asTensor().getFloatBuffer();
         FloatBuffer boxes = out.get(s + 3).asTensor().getFloatBuffer();
         FloatBuffer kps = out.get(s + 6).asTensor().getFloatBuffer();
@@ -165,7 +173,9 @@ final class Faces implements AutoCloseable {
                 continue;
             }
             int cell = a / ANCHORS;
-            float cx = (cell % cells) * stride, cy = (cell / cells) * stride;
+            int row = cell / cells;
+            float cx = cell % cells * (float) stride;
+            float cy = row * (float) stride;
             float[] k = new float[10];
             for (int i = 0; i < 5; i++) {
                 k[2 * i] = (cx + kps.get(a * 10 + 2 * i) * stride) / scale;
@@ -235,7 +245,10 @@ final class Faces implements AutoCloseable {
     /// Umeyama, "Least-squares estimation of transformation parameters between two point patterns", IEEE TPAMI 13(4),
     /// 1991). cv2.estimateAffinePartial2D would differ (RANSAC), and bytedeco's calib3d drags in highgui/GTK.
     private static Mat align(float[] kps) {
-        float msx = 0, msy = 0, mdx = 0, mdy = 0;
+        float msx = 0;
+        float msy = 0;
+        float mdx = 0;
+        float mdy = 0;
         for (int i = 0; i < 5; i++) {
             msx += kps[2 * i];
             msy += kps[2 * i + 1];
@@ -246,16 +259,22 @@ final class Faces implements AutoCloseable {
         msy /= 5;
         mdx /= 5;
         mdy /= 5;
-        double num_a = 0, num_b = 0, den = 0;
+        double numA = 0;
+        double numB = 0;
+        double den = 0;
         for (int i = 0; i < 5; i++) {
-            double px = kps[2 * i] - msx, py = kps[2 * i + 1] - msy;
-            double qx = DST[2 * i] - mdx, qy = DST[2 * i + 1] - mdy;
-            num_a += px * qx + py * qy;
-            num_b += px * qy - py * qx;
+            double px = kps[2 * i] - msx;
+            double py = kps[2 * i + 1] - msy;
+            double qx = DST[2 * i] - mdx;
+            double qy = DST[2 * i + 1] - mdy;
+            numA += px * qx + py * qy;
+            numB += px * qy - py * qx;
             den += px * px + py * py;
         }
-        double a = num_a / den, b = num_b / den; // dst = [[a,-b],[b,a]] * src + t
-        double tx = mdx - (a * msx - b * msy), ty = mdy - (b * msx + a * msy);
+        double a = numA / den; // dst = [[a,-b],[b,a]] * src + t
+        double b = numB / den;
+        double tx = mdx - (a * msx - b * msy);
+        double ty = mdy - (b * msx + a * msy);
         return new Mat(2, 3, CV_64F, new DoublePointer(a, -b, tx, b, a, ty));
     }
 
