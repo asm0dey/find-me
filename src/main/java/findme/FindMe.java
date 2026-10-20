@@ -161,7 +161,7 @@ public final class FindMe {
     /// The embedding of the one face in a reference photo; null, with the reason printed, if it has none or several.
     private static float[] onlyFace(Faces faces, Path p) {
         List<float[]> found;
-        try (PointerScope _ = new PointerScope()) {
+        try (var _ = new PointerScope()) {
             found = faces.embeddings(Faces.decode(Files.readAllBytes(p)));
         } catch (IOException e) {
             System.err.println("skip " + p.getFileName() + ": " + e.getMessage());
@@ -276,7 +276,7 @@ public final class FindMe {
             Thread.currentThread().interrupt();
             return Float.NaN;
         }
-        try (PointerScope _ = new PointerScope()) {
+        try (var _ = new PointerScope()) {
             float best = 0;
             for (float[] e : faces.embeddings(Faces.decode(bytes))) {
                 float dot = 0;

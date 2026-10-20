@@ -107,7 +107,7 @@ final class Faces implements AutoCloseable {
 
     /// L2-normalized 512-d embeddings, one per detected face. `img` is BGR, as from [#decode].
     List<float[]> embeddings(Mat img) {
-        try (PointerScope _ = new PointerScope()) {
+        try (var _ = new PointerScope()) {
             List<Detection> faces = detect(img);
             return faces.isEmpty() ? List.of() : embed(img, faces);
         }
@@ -173,8 +173,9 @@ final class Faces implements AutoCloseable {
                 continue;
             }
             int cell = a / ANCHORS;
-            float cx = (float) (cell % cells * stride); // exact: ints below 640
-            float cy = (float) (cell / cells * stride);
+            int row = cell / cells;
+            float cx = cell % cells * (float) stride;
+            float cy = row * (float) stride;
             float[] k = new float[10];
             for (int i = 0; i < 5; i++) {
                 k[2 * i] = (cx + kps.get(a * 10 + 2 * i) * stride) / scale;
