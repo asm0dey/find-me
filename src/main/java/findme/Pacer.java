@@ -106,13 +106,13 @@ final class Pacer {
         if (remainingMs <= 0) {
             return new Pace(Theme.MIN_MISS_MS, Theme.MIN_MATCH_MS);
         }
-        long matchMs = (long) matchesLeft * Theme.MATCH_MS > remainingMs / 2
+        long matchMs = matchesLeft * Theme.MATCH_MS > remainingMs / 2
                 ? Math.max(Theme.MIN_MATCH_MS, remainingMs / 2 / matchesLeft)
                 : Theme.MATCH_MS;
         long missMs = missesLeft <= 0
                 ? Theme.MISS_MS
                 : Math.clamp((remainingMs - matchesLeft * matchMs) / missesLeft, Theme.MIN_MISS_MS, Theme.MISS_MS);
-        long fit = matchesLeft == 0 ? matchMs : (remainingMs - (long) Math.max(0, missesLeft) * missMs) / matchesLeft;
+        long fit = matchesLeft == 0 ? matchMs : (remainingMs - Math.max(0, missesLeft) * missMs) / matchesLeft;
         if (missMs == Theme.MIN_MISS_MS && fit < matchMs) {
             // misses can't go faster: matches give up the rest
             matchMs = Math.max(Theme.MIN_MATCH_MS, fit);

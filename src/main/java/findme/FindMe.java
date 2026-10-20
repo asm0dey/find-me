@@ -126,7 +126,7 @@ public final class FindMe {
             }
             if (!albums.isEmpty()) {
                 // skips starting Python when there's nothing to list
-                listAlbums(albums, seen, found, (a, n, k) -> {});
+                listAlbums(albums, seen, found, (_, _, _) -> {});
             }
             List<Photo> todo = new ArrayList<>(found.values());
             System.err.println(todo.size() + " photos to check");
@@ -330,8 +330,8 @@ public final class FindMe {
         synchronized (FindMe.class) {
             if (score >= THRESHOLD) {
                 String line = String.format(Locale.ROOT, "MATCH %.2f %s", score, p.page());
-                //noinspection JavaPrintToLogpoint
                 // the CLI's output: MATCH lines go to stdout
+                //noinspection JavaPrintToLogpoint
                 System.out.println(line);
                 matchOut.write(line + "\n");
                 matchOut.flush();
@@ -399,8 +399,8 @@ public final class FindMe {
                 return null;
             }
             try {
-                //noinspection BusyWait
                 // retry backoff: 2s, 4s, 8s
+                //noinspection BusyWait
                 Thread.sleep(1000L << attempt);
             } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();

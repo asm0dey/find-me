@@ -20,10 +20,15 @@ import org.jspecify.annotations.Nullable;
 
 /// Java2D drawing of the photos on their cards: face boxes, landmark mesh, score tags, the ✓/✗ mark, the match stamp,
 /// and the gallery tiles, at the demo's phone-readable sizes (design pixels at 1080×960).
-// nested ternaries read fine here
-@SuppressWarnings("java:S3358")
+// nested ternaries read fine here; min/max where Math.clamp's bounds could cross (see the comments at each)
+@SuppressWarnings({"java:S3358", "java:S6885"})
 final class PhotoPainter {
-    static final int RADIUS = 12, STROKE = 6, TAG_FONT = 44, TAG_H = 52, TAG_PAD = 8, VERDICT = 180;
+    static final int RADIUS = 12;
+    static final int STROKE = 6;
+    static final int TAG_FONT = 44;
+    static final int TAG_H = 52;
+    static final int TAG_PAD = 8;
+    static final int VERDICT = 180;
     private static final int[] GLOW = {8, 14, 20};
     private static final float[] GLOW_ALPHA = {.35f, .20f, .10f};
     /// How much larger than the face a matching box starts before it tightens on (lock-on).
@@ -104,8 +109,8 @@ final class PhotoPainter {
         s.setColor(Theme.MATCH);
         s.setStroke(new BasicStroke(8));
         s.draw(new Rectangle(box.x + 4, box.y + 4, box.width - 8, box.height - 8));
-        centered(s, "MATCH", big, Theme.MATCH, 0, -h / 2.0 + 6 + 65);
-        centered(s, sub, small, Theme.MATCH, 0, h / 2.0 - 12 - 23);
+        centered(s, "MATCH", big, -h / 2.0 + 6 + 65);
+        centered(s, sub, small, h / 2.0 - 12 - 23);
         s.dispose();
     }
 
@@ -123,7 +128,8 @@ final class PhotoPainter {
     /// Where an `iw`×`ih` image lands when it fills `area`, centered on image point (fx, fy) as far as its edges allow.
     static Rectangle2D.Double cover(int iw, int ih, Rectangle area, float fx, float fy) {
         double k = Math.max((double) area.width / iw, (double) area.height / ih);
-        double w = iw * k, h = ih * k;
+        double w = iw * k;
+        double h = ih * k;
         // min/max, not Math.clamp: w can come out an ulp short of the area, which would make clamp's bounds cross
         //noinspection MathClampMigration
         double x = Math.min(area.x, Math.max(area.getMaxX() - w, area.getCenterX() - fx * k));
@@ -138,11 +144,11 @@ final class PhotoPainter {
         return 1 - u * u * u;
     }
 
-    /// Draws `s` with its cap height centered on `cy` and its middle on `cx`.
-    static void centered(Graphics2D g, String s, Font f, Color c, double cx, double cy) {
+    /// Draws `s` with its cap height centered on `cy`
+    static void centered(Graphics2D g, String s, Font f, double cy) {
         g.setFont(f);
-        g.setColor(c);
-        g.drawString(s, (float) (cx - g.getFontMetrics().stringWidth(s) / 2.0), baseline(g, f, cy));
+        g.setColor(Theme.MATCH);
+        g.drawString(s, (float) (-g.getFontMetrics().stringWidth(s) / 2.0), baseline(g, f, cy));
     }
 
     /// The baseline that centers capital letters and digits of `f` on `cy`, the same for any string.
@@ -172,6 +178,8 @@ final class PhotoPainter {
         return best;
     }
 
+    // one pass over the faces in paint order; split up, the order is harder to follow
+    @SuppressWarnings("java:S3776")
     private static void paint(
             Graphics2D g,
             Rectangle area,
@@ -217,7 +225,9 @@ final class PhotoPainter {
                 for (int i = GLOW.length - 1; i >= 0; i--) {
                     p.setComposite(AlphaComposite.SrcOver.derive(GLOW_ALPHA[i] * ease(lockOn)));
                     p.setColor(c);
-                    p.setStroke(new BasicStroke(GLOW[i] + STROKE, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    p.setStroke(
+                            new BasicStroke((float) GLOW[i] + STROKE, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
+                    );
                     p.draw(outline);
                 }
                 p.setComposite(AlphaComposite.SrcOver);
@@ -241,7 +251,8 @@ final class PhotoPainter {
                 }
                 // min/max, not Math.clamp: a tag wider than the area would cross clamp's bounds; it starts at the left
                 //noinspection MathClampMigration
-                double tx = Math.max(area.x, Math.min(r.x - STROKE, area.getMaxX() - tw)), ty = r.y - STROKE - TAG_H;
+                double tx = Math.max(area.x, Math.min(r.x - STROKE, area.getMaxX() - tw));
+                double ty = r.y - STROKE - TAG_H;
                 if (ty < area.y) {
                     // no room above the box: inside its top edge instead of cut off
                     ty = r.y;
@@ -265,7 +276,8 @@ final class PhotoPainter {
         if (lm.length < 10) {
             return;
         }
-        double[] x = new double[5], y = new double[5];
+        double[] x = new double[5];
+        double[] y = new double[5];
         for (int i = 0; i < 5; i++) {
             x[i] = at.x + lm[2 * i] * k;
             y[i] = at.y + lm[2 * i + 1] * k;
@@ -286,13 +298,17 @@ final class PhotoPainter {
 
     /// Box `b` on screen, grown by `grow` of its size around its center.
     private static Rectangle2D.Double rect(Box b, Rectangle2D.Double at, double k, double grow) {
-        double w = (b.x2() - b.x1()) * k, h = (b.y2() - b.y1()) * k;
-        double x = at.x + b.x1() * k - w * grow / 2, y = at.y + b.y1() * k - h * grow / 2;
+        double w = (b.x2() - b.x1()) * k;
+        double h = (b.y2() - b.y1()) * k;
+        double x = at.x + b.x1() * k - w * grow / 2;
+        double y = at.y + b.y1() * k - h * grow / 2;
         return new Rectangle2D.Double(x, y, w * (1 + grow), h * (1 + grow));
     }
 
     private static void paintVerdict(Graphics2D g, Rectangle area, boolean ok) {
-        double u = VERDICT / 24.0, x0 = area.getMaxX() - 16 - VERDICT, y0 = area.getMaxY() - 16 - VERDICT;
+        double u = VERDICT / 24.0;
+        double x0 = area.getMaxX() - 16 - VERDICT;
+        double y0 = area.getMaxY() - 16 - VERDICT;
         g.setColor(ok ? Theme.MATCH : Theme.NO_MATCH);
         g.fill(new Ellipse2D.Double(x0 + u, y0 + u, 22 * u, 22 * u));
         Path2D.Double mark = new Path2D.Double();
@@ -316,6 +332,6 @@ final class PhotoPainter {
     }
 
     private static Shape rounded(Rectangle r) {
-        return new RoundRectangle2D.Double(r.x, r.y, r.width, r.height, 2 * RADIUS, 2 * RADIUS);
+        return new RoundRectangle2D.Double(r.x, r.y, r.width, r.height, 2f * RADIUS, 2f * RADIUS);
     }
 }

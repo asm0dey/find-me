@@ -14,6 +14,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 
+// the sleeps give the pacer's own thread time to act, or to show it doesn't
+@SuppressWarnings("java:S2925")
 class PacerTest {
     private static final byte[] JPEG = jpeg();
 
@@ -71,8 +73,8 @@ class PacerTest {
         assertTrue(published.isEmpty());
         queue.add(scored(0.1f));
         while (published.isEmpty()) {
-            //noinspection BusyWait
             // a deliberate poll: the pacer runs on its own thread
+            //noinspection BusyWait
             Thread.sleep(5);
         }
         Scanning first = (Scanning) published.getFirst();

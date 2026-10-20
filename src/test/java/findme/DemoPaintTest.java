@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import sprouts.Var;
 import swingtree.SwingTree;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -27,7 +28,7 @@ class DemoPaintTest {
     private static Shot shot(int w, int h, float... similarities) {
         List<Box> boxes = new ArrayList<>();
         for (int i = 0; i < similarities.length; i++) {
-            float x = 40 + i * 120;
+            float x = (float) (40 + i * 120);
             float[] lm = {x + 20, 80, x + 60, 80, x + 40, 110, x + 25, 140, x + 55, 140};
             boxes.add(new Box(x, 40, x + 80, 160, lm, similarities[i]));
         }
@@ -149,7 +150,7 @@ class DemoPaintTest {
         for (float progress : new float[] {0, .25f, .75f, 1}) {
             BufferedImage img = new BufferedImage(672, 630, BufferedImage.TYPE_INT_RGB);
             Graphics2D g = img.createGraphics();
-            PhotoPainter.paintScan(g, new Rectangle(672, 630), match, progress);
+            assertDoesNotThrow(() -> PhotoPainter.paintScan(g, new Rectangle(672, 630), match, progress));
             g.dispose();
         }
     }

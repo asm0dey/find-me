@@ -424,6 +424,9 @@ final class Faces implements AutoCloseable {
             numB += px * qy - py * qx;
             den += px * px + py * py;
         }
+        if (den == 0) {
+            throw new IllegalArgumentException("landmarks must not all coincide");
+        }
         // dst = [[a,-b],[b,a]] * src + t
         double a = numA / den;
         double b = numB / den;

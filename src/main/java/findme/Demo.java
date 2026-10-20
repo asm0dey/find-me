@@ -29,6 +29,7 @@ import org.jspecify.annotations.Nullable;
 import sprouts.Var;
 import swingtree.SwingTree;
 import swingtree.UI;
+import swingtree.UIFactoryMethods;
 
 /// The demo: the real pipeline, with listing on its own thread from launch, overlapping learning and then the scan,
 /// which takes each album's photos as soon as the album is listed. The director thread learns and feeds the scan, the
@@ -57,7 +58,7 @@ final class Demo {
         }
         SwingTree.initializeUsing(cfg -> cfg.uiScaleFactor(1f));
         Var<DemoState> state = Var.of(DemoState.class, new Learning(List.of(), 0, 0, null, 0, 0, 0));
-        UI.show("find-me", frame -> {
+        UIFactoryMethods.show("find-me", frame -> {
             frame.setResizable(false);
             frame.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
             frame.addWindowListener(new WindowAdapter() {
@@ -180,6 +181,8 @@ final class Demo {
         }
     }
 
+    // catches even an Error, so the view always hears how the run ended
+    @SuppressWarnings("java:S1181")
     private static void direct(String[] args, Screen screen, long deadline) {
         try (var ticker = Executors.newSingleThreadScheduledExecutor()) {
             ticker.scheduleAtFixedRate(() -> {
@@ -218,7 +221,7 @@ final class Demo {
                 // a no-op once listed; after a failure, stops the lister where it can be stopped
                 listing.cancel(true);
             }
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             screen.end(new Failed("interrupted"));
         } catch (Throwable e) {
@@ -289,35 +292,34 @@ final class Demo {
             FindMe.listAlbums(albums, new HashSet<>(), found, new FindMe.AlbumProgress() {
                 @Override
                 public void photo(int album, int n, int listedInAlbum) {
-                    try {
-                        screen.listing(album, n, found.size() + listedInAlbum);
-                    } catch (RuntimeException e) {
-                        System.err.println("listing progress failed: " + e);
-                    }
+                    report(() -> screen.listing(album, n, found.size() + listedInAlbum));
                 }
 
                 @Override
                 public void albumStarted(int album, int n) {
-                    try {
-                        screen.listing(album, n, found.size());
-                    } catch (RuntimeException e) {
-                        System.err.println("listing progress failed: " + e);
-                    }
+                    report(() -> screen.listing(album, n, found.size()));
                 }
 
                 @Override
                 public void albumListed(int album, int n, List<FindMe.Photo> photos) {
-                    try {
+                    report(() -> {
                         listed.add(photos);
                         // after dedup across albums
                         screen.listing(album, n, found.size());
-                    } catch (RuntimeException e) {
-                        System.err.println("listing progress failed: " + e);
-                    }
+                    });
                 }
             });
         }
         screen.listingFinished(found.size());
+    }
+
+    /// Runs a listing progress update, which must never throw into gallery-dl's job.
+    private static void report(Runnable update) {
+        try {
+            update.run();
+        } catch (RuntimeException e) {
+            System.err.println("listing progress failed: " + e);
+        }
     }
 
     /// The CLI's scan, minus seen.txt and matches.txt, fed album by album as `listed` delivers them: every result goes

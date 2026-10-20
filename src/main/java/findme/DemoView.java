@@ -48,16 +48,35 @@ import swingtree.style.ComponentStyleDelegate;
 // a nested ternary picks a line's copy or color by phase detail at a glance
 @SuppressWarnings("java:S3358")
 final class DemoView {
-    static final int W = 1080, H = 960, PAD = 40, GAP = 28, COL = 300, HEADER = 104;
+    private static final String CENTER = "center";
+    static final int W = 1080;
+    static final int H = 960;
+    static final int PAD = 40;
+    static final int GAP = 28;
+    static final int COL = 300;
+    static final int HEADER = 104;
     /// Body heights (under the header, over each phase's footer); the screens' layouts below come out the same.
-    static final int LEARNING_BODY = 677, LISTING_BODY = 748, SCANNING_BODY = 630;
-    static final int LABEL = 36, LABEL_LINE = 43, LABEL_GAP = 14, TILE = 94, TILE_GAP = 9, MOSAIC_COLS = 3;
-    static final int BAR_W = W - 2 * PAD, BAR = 34, TICK = 8, RADIUS = PhotoPainter.RADIUS;
+    static final int LEARNING_BODY = 677;
+    static final int LISTING_BODY = 748;
+    static final int SCANNING_BODY = 630;
+    static final int LABEL = 36;
+    static final int LABEL_LINE = 43;
+    static final int LABEL_GAP = 14;
+    static final int TILE = 94;
+    static final int TILE_GAP = 9;
+    static final int MOSAIC_COLS = 3;
+    static final int BAR_W = W - 2 * PAD;
+    static final int BAR = 34;
+    static final int TICK = 8;
+    static final int RADIUS = PhotoPainter.RADIUS;
     /// The scan screen's footer: the similarity/threshold labels, a gap, then the bar with its tick above and below.
-    static final int SCORE_LABEL = 44, SCORE_GAP = 4, BAR_AREA = BAR + 2 * TICK, FOOTER =
-            SCORE_LABEL + SCORE_GAP + BAR_AREA;
+    static final int SCORE_LABEL = 44;
+    static final int SCORE_GAP = 4;
+    static final int BAR_AREA = BAR + 2 * TICK;
+    static final int FOOTER = SCORE_LABEL + SCORE_GAP + BAR_AREA;
     /// The listing's photo count: 240 px digits, in a row 250 px tall.
-    static final int COUNT = 240, COUNT_ROW = 250;
+    static final int COUNT = 240;
+    static final int COUNT_ROW = 250;
     /// The lock-on, then the stamp landing.
     static final LifeTime MATCH_ANIMATION = LifeTime.of(2 * Theme.LOCK_ON_MS, TimeUnit.MILLISECONDS);
     private static final Font FAILED = Theme.bold(44);
@@ -175,11 +194,11 @@ final class DemoView {
             .add(
                     GROW,
                     box()
-                        .withLayout(stack().align("center", "center"))
+                        .withLayout(stack().align(CENTER, CENTER))
                         .withStyle(DemoView::card)
                         .add(
                                 new CC()
-                                    .alignX("center")
+                                    .alignX(CENTER)
                                     // the digits, without the line's leading
                                     .height(fixed(COUNT_ROW)),
                                 text(l.viewAsString(it -> String.valueOf(it.found())), COUNT).withForeground(Theme.TEXT)
@@ -294,7 +313,7 @@ final class DemoView {
 
     private static UIForBox<JBox> failed(Val<Failed> f) {
         return box()
-            .withLayout(stack().insets(PAD + "").align("center", "center"))
+            .withLayout(stack().insets(PAD + "").align(CENTER, CENTER))
             .addAll(ALIGN_X_CENTER, f.viewAsTuple(String.class, it -> Tuple.of(
                     String.class,
                     wrap(it.message(), W - 2 * PAD, line -> (int) Math.ceil(FAILED
@@ -330,12 +349,12 @@ final class DemoView {
 
     private static UIForAnySwing<?, ?> tile(Tile tile) {
         return switch (tile) {
-            case Face f -> box()
+            case Face(var crop, var justLearned) -> box()
                 .withStyle(it -> it
                     .borderRadius(8)
-                    .border(f.justLearned() ? 5 : 0, Theme.SCANNING)
-                    .image(img -> img.image(f.crop()).fitMode(UI.FitComponent.WIDTH_AND_HEIGHT)));
-            case More m -> text(Val.of("+" + m.count()), 40)
+                    .border(justLearned ? 5 : 0, Theme.SCANNING)
+                    .image(img -> img.image(crop).fitMode(UI.FitComponent.WIDTH_AND_HEIGHT)));
+            case More(var count) -> text(Val.of("+" + count), 40)
                 .withForeground(Theme.TEXT)
                 .withStyle(it -> it.backgroundColor(Theme.CARD).borderRadius(8))
                 .withHorizontalAlignment(UI.HorizontalAlignment.CENTER);
@@ -393,7 +412,7 @@ final class DemoView {
                     .withStyle(s -> card(s).painter(UI.Layer.CONTENT, g -> PhotoPainter.paintTile(g, area(s), shot)))
                 )))
             .applyIf(grid.more() > 0, it -> it.add(box()
-                .withLayout(stack().align("center", "center"))
+                .withLayout(stack().align(CENTER, CENTER))
                 .withStyle(DemoView::card)
                 .add(ALIGN_X_CENTER, text(Val.of("+" + grid.more()), 72).withForeground(Theme.TEXT))
                 .add(ALIGN_X_CENTER, text(Val.of("more"), LABEL).withForeground(Theme.MUTED))
@@ -462,6 +481,8 @@ final class DemoView {
     }
 
     /// Crops drawn in `slots` tiles; when they overflow, the last tile is "+K" instead (K = crops - drawn).
+    // not a clamp: an overflow gives up one tile for the "+K"
+    @SuppressWarnings("java:S6885")
     static int shownCrops(int crops, int slots) {
         return crops <= slots ? crops : Math.max(0, slots - 1);
     }

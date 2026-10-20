@@ -17,6 +17,6 @@ class ThemeTest {
     @Test
     void bundledFontsLoad() {
         assertTrue(Theme.bold(64).getFamily().startsWith("Pragmasevka"));
-        assertEquals(64f, Theme.regular(64).getSize2D());
+        assertEquals(64f, Theme.regular().getSize2D());
     }
 }

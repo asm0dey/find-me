@@ -7,10 +7,15 @@ import com.oracle.svm.core.annotate.TargetClass;
 /// adds lambdas as listeners, and native image can't have arrays of lambda classes (registering one crashes the
 /// builder in `LambdaUtils.findStableLambdaName`), so the window failed with a `MissingReflectionRegistrationError`.
 /// This replaces `sprouts.impl.Util.expectedClassFromItem` (sprouts 2.8.0) with the same logic, except that a
-/// lambda's type is its functional interface. Recheck when updating sprouts. `sprouts.Result` has its own unpatched
-/// private copy of the same method; harmless today, as no `Result` holds lambdas.
+/// lambda's type is its functional interface. The cause is `TupleTree.addAt` retyping a listener tuple by its item
+/// (https://codeberg.org/globaltcad/sprouts/issues/406); delete this once a sprouts release fixes it.
+/// `sprouts.Result` has its own unpatched private copy of the same method; harmless today, as no `Result` holds
+/// lambdas.
 @TargetClass(className = "sprouts.impl.Util")
 final class SproutsLambdaTypes {
+    private SproutsLambdaTypes() {
+    }
+
     @Substitute
     @SuppressWarnings("unchecked")
     static <T> Class<T> expectedClassFromItem(T item) {

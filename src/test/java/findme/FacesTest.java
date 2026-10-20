@@ -2,6 +2,7 @@ package findme;
 
 import static org.bytedeco.opencv.global.opencv_core.CV_8UC3;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -28,6 +29,14 @@ class FacesTest {
         assertEquals(448, crop.rows());
         // x=200 in crop -> x=50 in source
         assertEquals(2 * 50, crop.ptr(200, 200).get(0) & 0xFF, 2);
+    }
+
+    @Test
+    void alignedCropRejectsCoincidentLandmarks() {
+        Mat img = new Mat(112, 112, CV_8UC3, Scalar.all(0));
+        float[] landmarks = new float[10];
+
+        assertThrows(IllegalArgumentException.class, () -> Faces.alignedCrop(img, landmarks, 112));
     }
 
     @Test
