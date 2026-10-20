@@ -1,3 +1,9 @@
 target/
 seen.txt
 matches.txt
+.superpowers/
+# jdtls (Eclipse JDT language server) project files
+.classpath
+.project
+.settings/
+.factorypath

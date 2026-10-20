@@ -1,0 +1,28 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "description": "One PR for everything that is not a major bump. Majors stay on their own, and a security update still opens its own PR regardless of this rule.",
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "bump"],
+      "groupName": "all non-major dependencies"
+    }
+  ],
+  "customManagers": [
+    {
+      "description": "The Prince of Space version sits inside Spotless's configuration, where the Maven manager does not look.",
+      "customType": "regex",
+      "managerFilePatterns": ["/^pom\\.xml$/"],
+      "matchStrings": [
+        "<princeOfSpace>\\s*<version>(?<currentValue>[^<]+)</version>"
+      ],
+      "depNameTemplate": "io.github.agustafson.princeofspace:prince-of-space-core",
+      "datasourceTemplate": "maven"
+    }
+  ]
+}
