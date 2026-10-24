@@ -11,8 +11,8 @@
     <properties>
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <javacpp.version>1.5.13</javacpp.version>
-        <graalpy.version>25.0.4</graalpy.version> <!-- must match the JDK's GraalVM version, or Truffle falls back to interpreter-only -->
+        <javacpp.version>1.5.14</javacpp.version>
+        <graalpy.version>25.4.4.1.1</graalpy.version> <!-- must match the JDK's GraalVM version, or Truffle falls back to interpreter-only -->
         <opencv.version>4.13.0-${javacpp.version}</opencv.version>
     </properties>
 
@@ -22,7 +22,7 @@
             <dependency>
                 <groupId>com.miglayout</groupId>
                 <artifactId>miglayout-swing</artifactId>
-                <version>11.5.1</version>
+                <version>11.5.2</version>
             </dependency>
             <dependency>
                 <groupId>com.github.weisj</groupId>
@@ -42,7 +42,7 @@
             <dependency>
                 <groupId>org.slf4j</groupId>
                 <artifactId>slf4j-api</artifactId>
-                <version>2.0.17</version>
+                <version>2.0.20</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -51,7 +51,7 @@
         <dependency>
             <groupId>com.jyuzawa</groupId>
             <artifactId>onnxruntime-api</artifactId>
-            <version>1.30.0-1</version>
+            <version>1.31.0-1</version>
         </dependency>
         <!-- GraalPy runs gallery-dl in-process to list albums -->
         <dependency>
@@ -134,7 +134,7 @@
                 <dependency>
                     <groupId>com.jyuzawa</groupId>
                     <artifactId>onnxruntime-gpu</artifactId>
-                    <version>1.30.0</version>
+                    <version>1.31.0</version>
                     <classifier>linux-x86_64</classifier>
                     <scope>runtime</scope>
                     <exclusions>
@@ -160,7 +160,7 @@
                 <dependency>
                     <groupId>com.jyuzawa</groupId>
                     <artifactId>onnxruntime-cpu</artifactId>
-                    <version>1.30.0</version>
+                    <version>1.31.0</version>
                     <classifier>osx-aarch_64</classifier>
                     <scope>runtime</scope>
                     <exclusions>
@@ -181,7 +181,7 @@
                     <plugin>
                         <groupId>org.graalvm.buildtools</groupId>
                         <artifactId>native-maven-plugin</artifactId>
-                        <version>1.1.14</version>
+                        <version>1.1.17</version>
                         <extensions>true</extensions>
                         <executions>
                             <execution>
@@ -223,7 +223,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.14.0</version>
+                <version>3.16.0</version>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -276,7 +276,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-dependency-plugin</artifactId>
-                <version>3.8.1</version>
+                <version>3.11.0</version>
                 <executions>
                     <execution>
                         <phase>package</phase>
@@ -291,7 +291,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
-                <version>3.4.2</version>
+                <version>3.5.1</version>
                 <configuration>
                     <archive>
                         <manifest>
